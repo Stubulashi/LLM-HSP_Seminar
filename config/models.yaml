@@ -1,0 +1,172 @@
+# IPLE 模型配置（唯一模型事实源，pipeline.md L305）
+# 仓库可用性说明（2026-09 已逐一核对存在，云端可用 scripts/verify_models.py 复验）：
+#   本地档（huggingface）：Qwen/Qwen2.5-0.5B-Instruct、Qwen/Qwen2.5-1.5B-Instruct（官方，必在）
+#   7B 档（vllm bf16）：Qwen/Qwen2.5-7B-Instruct、deepseek-ai/DeepSeek-R1-Distill-Qwen-7B（官方，必在）
+#   14B/32B 档（vllm awq）：Qwen/Qwen2.5-14B-Instruct-AWQ（官方 AWQ）；
+#     DeepSeek-R1-Distill 无官方 AWQ → 使用 AutoAWQ 作者 casperhansen 的仓库（已在 HF 存在确认），
+#     若其下载 404/限流：换 graelo/DeepSeek-R1-Distill-Qwen-32B-AWQ 等同类 AWQ 仓库并同步改 quantization=awq。
+# 字段约定（裁决 C4/C14，见 docs/decisions.md）：
+#   architecture: causal_lm（pipeline.md L319-320 语义，可缺省，默认 causal_lm）
+#   backend: huggingface / api / vllm（scaf.md L783-794 语义扩展，默认 huggingface；
+#             vllm 为成本优化新增后端，大模型提速用，见 AutoDL 成本优化方案）
+#   quantization: none / 4bit / 8bit / awq / gptq / fp8。
+#             huggingface 后端配合 bitsandbytes（4bit/8bit）；vllm 后端要求预量化权重：
+#             awq/gptq/fp8 由 vllm 直接读取（models 的 path 须指向含对应权重的仓库）。
+#   vllm 显存旋钮（vGPU 32G 单卡预算，vllm_model.py 读取）：
+#     gpu_memory_utilization: 0.80~0.95（OOM 时下调）
+#     max_model_len: 上下文上限（KV 压力大时下调，如 4096）
+#     max_num_seqs: 引擎并发序列上限（OOM 时下调）
+#     enable_prefix_caching: 同 story 相邻 step 共享前缀复用（默认 true，压榨吞吐）
+#   size / training: 统计变量 ModelSize 与 RQ2 对比所需（proj.md L854）
+#
+# 显存量级参考（vGPU 32G，如 RTX 4090 32G / L40S 档）：
+#   7B bf16   ~14GB 权重（util .92 可跑，前缀缓存余量大）
+#   14B AWQ   ~9-10GB（最舒适，可长上下文；想试 bf16 需 util>=.95 且 max_model_len<=4096，谨慎）
+#   32B AWQ   ~18-20GB（32G 主档：util .93 + 8K 上下文可行）
+#   若换 24G/48G 卡：整体下调/上调 gpu_memory_utilization 即可，代码无需改动。
+models:
+  qwen05b:   # 本地 4GB 显存真实验证用（非 AutoDL 目标实验模型）
+    family: Qwen
+    path: Qwen/Qwen2.5-0.5B-Instruct
+    architecture: causal_lm
+    backend: huggingface
+    size: 0.5B
+    training: instruction
+    dtype: bfloat16
+  qwen15b:   # 本地 4GB 极限候选（INT4/bitsandbytes，先探针后选）
+    family: Qwen
+    path: Qwen/Qwen2.5-1.5B-Instruct
+    architecture: causal_lm
+    backend: huggingface
+    size: 1.5B
+    training: instruction
+    quantization: 4bit
+  qwen7b:
+    family: Qwen
+    path: Qwen/Qwen2.5-7B-Instruct
+    architecture: causal_lm
+    backend: vllm
+    size: 7B
+    training: instruction
+    dtype: bfloat16
+    gpu_memory_utilization: 0.92
+    max_model_len: 8192
+    max_num_seqs: 64
+    enable_prefix_caching: true
+  qwen14b:   # 官方 AWQ 权重（Qwen/Qwen2.5-14B-Instruct-AWQ），32G 舒适档
+    family: Qwen
+    path: Qwen/Qwen2.5-14B-Instruct-AWQ
+    architecture: causal_lm
+    backend: vllm
+    size: 14B
+    training: instruction
+    quantization: awq
+    dtype: float16   # AWQ 只支持 float16（不可 bfloat16）
+    gpu_memory_utilization: 0.93
+    max_model_len: 8192
+    max_num_seqs: 48
+    enable_prefix_caching: true
+  deepseek7b:
+    family: DeepSeek
+    path: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+    architecture: causal_lm
+    backend: vllm
+    size: 7B
+    training: reasoning
+    dtype: bfloat16
+    gpu_memory_utilization: 0.92
+    max_model_len: 8192
+    max_num_seqs: 64
+    enable_prefix_caching: true
+  deepseek14b:  # AutoAWQ 作者 casperhansen 的 AWQ 权重（vLLM 读取标准 quantize_config）
+    family: DeepSeek
+    path: casperhansen/deepseek-r1-distill-qwen-14b-awq
+    architecture: causal_lm
+    backend: vllm
+    size: 14B
+    training: reasoning
+    quantization: awq
+    dtype: float16   # AWQ 只支持 float16
+    gpu_memory_utilization: 0.93
+    max_model_len: 8192
+    max_num_seqs: 48
+    enable_prefix_caching: true
+  deepseek32b:  # AutoAWQ 作者 casperhansen 的 AWQ 权重；32G 主档（OOM 先降 max_model_len/num_seqs/util）
+    family: DeepSeek
+    path: casperhansen/deepseek-r1-distill-qwen-32b-awq
+    architecture: causal_lm
+    backend: vllm
+    size: 32B
+    training: reasoning
+    quantization: awq
+    dtype: float16   # AWQ 只支持 float16
+    gpu_memory_utilization: 0.93
+    max_model_len: 8192
+    max_num_seqs: 32
+    enable_prefix_caching: true
+
+  qwen32b:  # D 可选端点：Qwen2.5-32B-Instruct 官方 AWQ（与 deepseek32b 同规模跨家族对照）
+    family: Qwen
+    path: Qwen/Qwen2.5-32B-Instruct-AWQ
+    architecture: causal_lm
+    backend: vllm
+    size: 32B
+    training: instruction
+    quantization: awq
+    dtype: float16
+    gpu_memory_utilization: 0.93
+    max_model_len: 8192
+    max_num_seqs: 32
+    enable_prefix_caching: true
+
+  # ---- 以下为对照/扩展条目（非正式矩阵；论文正式表仍用上列 5 模型）----
+  # R2：14B bf16 量化对照（判别 AWQ 是否引入伪影；32G 紧配，仅小样）
+  qwen14b_bf16:
+    family: Qwen
+    path: Qwen/Qwen2.5-14B-Instruct
+    architecture: causal_lm
+    backend: vllm
+    size: 14B
+    training: instruction
+    dtype: bfloat16
+    gpu_memory_utilization: 0.97
+    max_model_len: 3072
+    max_num_seqs: 8
+    enable_prefix_caching: true
+  deepseek14b_bf16:
+    family: DeepSeek
+    path: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+    architecture: causal_lm
+    backend: vllm
+    size: 14B
+    training: reasoning
+    dtype: bfloat16
+    gpu_memory_utilization: 0.97
+    max_model_len: 3072
+    max_num_seqs: 8
+    enable_prefix_caching: true
+  # R3：小模型同口径端点（vllm bf16，量小可全量）
+  qwen05b_vllm:
+    family: Qwen
+    path: Qwen/Qwen2.5-0.5B-Instruct
+    architecture: causal_lm
+    backend: vllm
+    size: 0.5B
+    training: instruction
+    dtype: bfloat16
+    gpu_memory_utilization: 0.90
+    max_model_len: 8192
+    max_num_seqs: 64
+    enable_prefix_caching: true
+  qwen15b_vllm:
+    family: Qwen
+    path: Qwen/Qwen2.5-1.5B-Instruct
+    architecture: causal_lm
+    backend: vllm
+    size: 1.5B
+    training: instruction
+    dtype: bfloat16
+    gpu_memory_utilization: 0.90
+    max_model_len: 8192
+    max_num_seqs: 64
+    enable_prefix_caching: true

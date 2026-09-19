@@ -1,0 +1,14 @@
+# IPLE 依赖清单（补充约定，见 docs/decisions.md 补充约定表）
+# 依据缺失：scaf.md L132-136 仅 "CHECK required_packages"；版本为初值，首个 PR 评审确认
+torch>=2.2
+transformers>=4.40
+vllm>=0.5.0  # AutoDL 成本优化：vllm 后端提速 14B/32B（对 torch 版本有强约束，见计划假设）
+accelerate>=0.30
+bitsandbytes>=0.43
+pyyaml>=6.0
+pandas>=2.0
+statsmodels>=0.14
+sentence-transformers>=2.6
+pytest>=8.0
+tqdm>=4.66
+typer>=0.12

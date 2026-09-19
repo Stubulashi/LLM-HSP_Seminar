@@ -1,0 +1,102 @@
+# IPLE Prompt 模板（版本化，scaf.md Principle 2 的 prompt version 来源）
+prompts:
+  prompt_version: "1.2"
+
+  # 实验条件（裁决 C13）：condition_b 为预留独立模板，延后实现，不计入 720 会话
+  conditions:
+    condition_a:
+      system: |
+        You are participating in a language comprehension experiment.
+        You will read a story sentence by sentence.
+        After each sentence, provide:
+        1. Your current understanding of the situation.
+        2. The possible intentions or beliefs of the characters.
+        3. Your confidence score from 0 to 100.
+        Formatting (must follow):
+        - Put the confidence as the very last line of your whole reply, exactly: `Confidence: <0-100>`.
+        - Write no other number (no extra digits) anywhere except that single confidence value.
+        - Stop right after the confidence line: never add a closing sentence, summary, or any remark after it.
+        Important:
+        - Only use information currently available.
+        - Do not assume future sentences.
+        - Do not provide hidden reasoning steps.
+        - Give only your answer: do not repeat, echo, or restate the instructions above.
+      template: |
+        {context}
+
+        Answer:
+        1. Current situation interpretation
+        2. Character intention
+        3. Confidence on the final line exactly `Confidence: <0-100>`, then stop.
+    condition_b:
+      system: |
+        You are participating in a language comprehension experiment.
+        You will read a story sentence by sentence.
+        After each sentence, provide:
+        1. Your current understanding of the situation.
+        2. The possible intentions or beliefs of the characters.
+        3. Your confidence score from 0 to 100.
+        Formatting (must follow):
+        - Put confidence as the very last line of your whole reply, exactly: `Confidence: <0-100>`.
+        - Write no other number besides that single confidence value.
+        - Stop after the confidence line: never add a closing remark.
+        - Do not repeat or restate the instructions.
+      template: |
+        {context}
+
+        Analyze carefully why your interpretation changes.
+        Answer:
+        1. Current situation interpretation
+        2. Character intention
+        3. Confidence on the final line exactly `Confidence: <0-100>`, then stop.
+
+  # 任务级模板（裁决 C9）：false_belief 用"解释+回答问题"模板，其余用统一解释模板。
+  # P1-5 校准(1.2)：faux_pas/implicature 改为"单答式"模板——直接回答 question，
+  # 禁止编号三段式回声，置信仅作末行，避免 1.5B 类模型复述模板污染 embedding。
+  tasks:
+    default:
+      template: |
+        {context}
+
+        Answer:
+        1. Current situation interpretation
+        2. Character intention
+        3. Confidence on the final line exactly `Confidence: <0-100>`, then stop.
+    false_belief:
+      template: |
+        {context}
+
+        Question: {question}
+
+        Give a direct answer to the question, then:
+        1. Current situation interpretation
+        2. Character intention
+        3. Confidence on the final line exactly `Confidence: <0-100>`, then stop.
+    faux_pas:
+      template: |
+        {context}
+
+        Question: {question}
+
+        Give a short direct answer to the question (one or two sentences: who said the inappropriate thing, what was said, and why it was inappropriate). Do not list numbered sections and do not restate these instructions. End your whole reply with exactly this final line: `Confidence: <0-100>`. Write nothing after it.
+    implicature:
+      template: |
+        {context}
+
+        Question: {question}
+
+        Give a short direct answer in Chinese (one or two sentences stating the speaker's true implied meaning). Do not list numbered sections and do not restate these instructions. End your whole reply with exactly this final line: `Confidence: <0-100>`. Write nothing after it.
+
+  # 标注 prompt（裁决 C8，pipeline.md L434-460 措辞为准）
+  annotation:
+    template: |
+      You are a linguistic annotation assistant.
+      Your task: Convert this pragmatic story into structured data.
+      For each sentence identify:
+      1. Sentence function: background / context_update / critical_event / resolution
+      2. Expected belief state.
+      3. Expected pragmatic interpretation.
+      Return valid JSON only.
+
+      Sentences:
+      {sentences}
