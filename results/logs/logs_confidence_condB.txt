@@ -1,0 +1,27 @@
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+<string>:27: ConvergenceWarning: Retrying MixedLM optimization with lbfgs
+records 15333
+deepseek14b [np.float64(89.6), np.float64(89.1), np.float64(94.3), np.float64(93.8)] 5127
+deepseek32b [np.float64(83.4), np.float64(83.7), np.float64(89.0), np.float64(88.5)] 5196
+deepseek7b [np.float64(82.1), np.float64(83.2), np.float64(85.1), np.float64(85.2)] 5010
+               Mixed Linear Model Regression Results
+===================================================================
+Model:                MixedLM    Dependent Variable:    conf       
+No. Observations:     15333      Method:                ML         
+No. Groups:           280        Scale:                 198.7235   
+Min. group size:      8          Log-Likelihood:        -62387.3986
+Max. group size:      315        Converged:             Yes        
+Mean group size:      54.8                                         
+-------------------------------------------------------------------
+                        Coef.  Std.Err.    z    P>|z| [0.025 0.975]
+-------------------------------------------------------------------
+Intercept               84.123    0.421 199.988 0.000 83.298 84.947
+C(model)[T.deepseek32b] -5.465    0.278 -19.693 0.000 -6.009 -4.921
+C(model)[T.deepseek7b]  -7.812    0.280 -27.889 0.000 -8.361 -7.263
+C(task)[T.faux_pas]      5.432    0.896   6.066 0.000  3.677  7.188
+C(task)[T.implicature]   5.347    0.351  15.230 0.000  4.659  6.035
+pos_frac                 6.035    0.398  15.158 0.000  5.255  6.816
+Group Var                2.058    0.038                            
+===================================================================
+

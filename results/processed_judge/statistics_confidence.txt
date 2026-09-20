@@ -1,0 +1,95 @@
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: Retrying MixedLM optimization with lbfgs
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: Retrying MixedLM optimization with cg
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: MixedLM optimization failed, trying a different optimizer may help.
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: Gradient optimization failed, |grad| = 207.851450
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: Retrying MixedLM optimization with lbfgs
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: Retrying MixedLM optimization with cg
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\Users\Akku\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\statsmodels\regression\mixed_linear_model.py:2384: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  rslt = super().fit(
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: MixedLM optimization failed, trying a different optimizer may help.
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+C:\HSP\scripts\confidence_analysis.py:90: ConvergenceWarning: Gradient optimization failed, |grad| = 204.668691
+  mf = smf.mixedlm(formula, df, groups=df["story_id"]).fit(reml=False, maxiter=500)
+[confidence] records=30947 models=['deepseek14b', 'deepseek32b', 'deepseek7b', 'qwen14b', 'qwen32b', 'qwen7b']
+model            Q1     Q2     Q3     Q4   n
+deepseek14b    87.8   89.1   94.0   93.6   5134
+deepseek32b    79.3   80.7   88.0   87.4   5188
+deepseek7b     77.3   78.6   84.1   82.0   5065
+qwen14b        64.7   64.2   69.9   72.7   5214
+qwen32b        75.0   77.3   84.2   86.6   5214
+qwen7b         84.6   86.9   95.8   97.0   5132
+
+======================================================================
+[confidence] MixedLM: conf ~ pos_frac + C(model) + C(task)
+                Mixed Linear Model Regression Results
+======================================================================
+Model:                MixedLM     Dependent Variable:     conf        
+No. Observations:     30947       Method:                 ML          
+No. Groups:           280         Scale:                  536.1001    
+Min. group size:      17          Log-Likelihood:         -141275.4616
+Max. group size:      653         Converged:              No          
+Mean group size:      110.5                                           
+----------------------------------------------------------------------
+                         Coef.  Std.Err.    z    P>|z|  [0.025  0.975]
+----------------------------------------------------------------------
+Intercept                75.253    0.597 126.052 0.000  74.083  76.423
+C(model)[T.deepseek32b]  -7.208    0.456 -15.814 0.000  -8.102  -6.315
+C(model)[T.deepseek7b]  -10.721    0.459 -23.378 0.000 -11.620  -9.822
+C(model)[T.qwen14b]     -23.075    0.455 -50.686 0.000 -23.967 -22.183
+C(model)[T.qwen32b]     -10.026    0.455 -22.022 0.000 -10.918  -9.133
+C(model)[T.qwen7b]        0.310    0.457   0.678 0.498  -0.586   1.206
+C(task)[T.faux_pas]      12.279    1.259   9.756 0.000   9.812  14.746
+C(task)[T.implicature]   11.903    0.506  23.506 0.000  10.910  12.895
+pos_frac                 11.791    0.461  25.583 0.000  10.888  12.695
+Group Var                 7.395    0.055                              
+======================================================================
+
+converged=False llf=-141275.5
+
+======================================================================
+[confidence] MixedLM: conf ~ pos_frac * C(model) + C(task)
+                     Mixed Linear Model Regression Results
+===============================================================================
+Model:                   MixedLM        Dependent Variable:        conf        
+No. Observations:        30947          Method:                    ML          
+No. Groups:              280            Scale:                     534.9869    
+Min. group size:         17             Log-Likelihood:            -141243.2125
+Max. group size:         653            Converged:                 No          
+Mean group size:         110.5                                                 
+-------------------------------------------------------------------------------
+                                  Coef.  Std.Err.    z    P>|z|  [0.025  0.975]
+-------------------------------------------------------------------------------
+Intercept                         77.375    0.842  91.917 0.000  75.725  79.025
+C(model)[T.deepseek32b]           -9.188    1.026  -8.953 0.000 -11.200  -7.177
+C(model)[T.deepseek7b]            -9.978    1.030  -9.687 0.000 -11.997  -7.960
+C(model)[T.qwen14b]              -24.929    1.024 -24.338 0.000 -26.937 -22.922
+C(model)[T.qwen32b]              -14.416    1.024 -14.074 0.000 -16.423 -12.408
+C(model)[T.qwen7b]                -4.884    1.027  -4.753 0.000  -6.897  -2.870
+C(task)[T.faux_pas]               12.296    1.257   9.783 0.000   9.833  14.760
+C(task)[T.implicature]            11.901    0.506  23.535 0.000  10.910  12.892
+pos_frac                           8.130    1.124   7.235 0.000   5.928  10.333
+pos_frac:C(model)[T.deepseek32b]   3.417    1.585   2.156 0.031   0.311   6.524
+pos_frac:C(model)[T.deepseek7b]   -1.279    1.592  -0.803 0.422  -4.399   1.841
+pos_frac:C(model)[T.qwen14b]       3.201    1.582   2.023 0.043   0.100   6.303
+pos_frac:C(model)[T.qwen32b]       7.569    1.582   4.783 0.000   4.467  10.671
+pos_frac:C(model)[T.qwen7b]        8.957    1.587   5.642 0.000   5.845  12.068
+Group Var                          7.372    0.055                              
+===============================================================================
+
+converged=False llf=-141243.2

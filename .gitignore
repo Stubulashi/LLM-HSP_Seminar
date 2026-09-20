@@ -1,8 +1,8 @@
 # IPLE core code release — ignore rules (safety net)
-# Source materials and local outputs (kept out of git)
+# Source materials stay out of git; the experiment outputs under results/ and
+# results_condB/ are tracked (see the README "Data and Materials" section)
 data/
-results/
-logs/
+/logs/
 cloud_backup/
 datasets/
 

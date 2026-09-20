@@ -1,0 +1,52 @@
+                 Mixed Linear Model Regression Results
+=======================================================================
+Model:                MixedLM    Dependent Variable:    emergence_point
+No. Observations:     4600       Method:                REML           
+No. Groups:           279        Scale:                 2.8562         
+Min. group size:      1          Log-Likelihood:        -9238.0496     
+Max. group size:      26         Converged:             Yes            
+Mean group size:      16.5                                             
+-----------------------------------------------------------------------
+                             Coef.  Std.Err.   z    P>|z| [0.025 0.975]
+-----------------------------------------------------------------------
+Intercept                     1.736    0.156 11.139 0.000  1.430  2.041
+C(model)[T.deepseek14b_bf16]  0.222    0.357  0.622 0.534 -0.478  0.923
+C(model)[T.deepseek32b]      -0.276    0.089 -3.101 0.002 -0.451 -0.102
+C(model)[T.deepseek7b]        0.295    0.091  3.232 0.001  0.116  0.474
+C(model)[T.qwen05b_vllm]      1.775    0.132 13.487 0.000  1.517  2.033
+C(model)[T.qwen14b]           0.816    0.099  8.213 0.000  0.621  1.011
+C(model)[T.qwen14b_bf16]      0.195    0.350  0.555 0.579 -0.492  0.881
+C(model)[T.qwen15b_vllm]      1.208    0.101 11.944 0.000  1.010  1.406
+C(model)[T.qwen32b]           0.557    0.100  5.593 0.000  0.362  0.752
+C(model)[T.qwen7b]            0.129    0.092  1.400 0.161 -0.051  0.309
+C(task)[T.faux_pas]           1.146    0.405  2.829 0.005  0.352  1.941
+C(task)[T.implicature]        1.018    0.169  6.031 0.000  0.687  1.349
+Group Var                     1.309    0.082                           
+=======================================================================
+
+
+                 Mixed Linear Model Regression Results
+=======================================================================
+Model:                  MixedLM      Dependent Variable:      stability
+No. Observations:       6770         Method:                  REML     
+No. Groups:             280          Scale:                   0.0129   
+Min. group size:        24           Log-Likelihood:          4758.1437
+Max. group size:        26           Converged:               Yes      
+Mean group size:        24.2                                           
+-----------------------------------------------------------------------
+                             Coef.  Std.Err.   z    P>|z| [0.025 0.975]
+-----------------------------------------------------------------------
+Intercept                     0.109    0.009 11.635 0.000  0.091  0.128
+C(model)[T.deepseek14b_bf16]  0.007    0.023  0.314 0.753 -0.039  0.053
+C(model)[T.deepseek32b]      -0.035    0.006 -6.399 0.000 -0.046 -0.025
+C(model)[T.deepseek7b]        0.062    0.006 11.270 0.000  0.052  0.073
+C(model)[T.qwen05b_vllm]      0.318    0.006 57.327 0.000  0.307  0.329
+C(model)[T.qwen14b]           0.138    0.006 24.844 0.000  0.127  0.149
+C(model)[T.qwen14b_bf16]      0.069    0.023  2.922 0.003  0.023  0.114
+C(model)[T.qwen15b_vllm]      0.246    0.006 44.308 0.000  0.235  0.256
+C(model)[T.qwen32b]           0.060    0.006 10.852 0.000  0.049  0.071
+C(model)[T.qwen7b]            0.033    0.006  5.994 0.000  0.022  0.044
+C(task)[T.faux_pas]           0.221    0.024  9.062 0.000  0.173  0.269
+C(task)[T.implicature]        0.197    0.010 19.638 0.000  0.177  0.217
+Group Var                     0.005    0.004                           
+=======================================================================
