@@ -1,7 +1,8 @@
-"""用本地 qwen15b 对六条样例的回答做内容级等价判定（judge）。
+"""Content-level equivalence judging (judge) with the local qwen15b on the answers of six sample stories.
 
-对比 processed accuracy(余弦0.7) 与 judge(语义等价)，揭示余弦判据的漏/误报。
-用法： python -X utf8 scripts/judge_sample.py   (需 PYTHONPATH 含仓库根)
+Compares the processed accuracy (cosine 0.7) with the judge (semantic equivalence) to expose the
+cosine criterion's misses and false positives.
+Usage: python -X utf8 scripts/judge_sample.py   (requires the repo root on PYTHONPATH)
 """
 import csv, json, os, sys
 

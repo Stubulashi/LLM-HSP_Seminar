@@ -1,9 +1,9 @@
-"""实验调度器（scaf.md 8 节 L902-963，裁决 C2/C11 扩展）。
+"""Experiment scheduler (scaf.md section 8 L902-963; extended by rulings C2/C11).
 
-- create_jobs：model × task × story × repetition 生成 Job（含 task 字段，裁决 C11）
-- execute：按模型分组——加载一次跑完该组全部 job 再卸载（性能关键决策）
-- job 幂等：run 文件完整即跳过（断点续跑）
-- seed：job_seed 确定性派生 + apply_seed（补充约定，scaf.md Principle 2）
+- create_jobs: builds jobs over model × task × story × repetition (each job carries the task field; ruling C11)
+- execute: groups by model — load once, finish all jobs of the group, then unload (a performance-critical decision)
+- job idempotency: a complete run file is skipped (resume after interruption)
+- seed: deterministic derivation via job_seed plus apply_seed (supplementary convention; scaf.md Principle 2)
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ class ExperimentScheduler:
     def create_jobs(self, models: list[str], tasks: list[str],
                     stories_by_task: dict[str, list[dict]],
                     repetitions: int) -> list[dict]:
-        """生成 Job 列表：{model, task, story_id, repeat, story}。"""
+        """Build the job list: {model, task, story_id, repeat, story}."""
         jobs: list[dict] = []
         for model in models:
             for task in tasks:
@@ -38,7 +38,7 @@ class ExperimentScheduler:
         return jobs
 
     def execute(self, jobs: list[dict]) -> None:
-        """按模型分组执行：load → 跑完该组 → unload。"""
+        """Execute grouped by model: load → finish the group → unload."""
         experiment = self.config.get("experiment")
         temperature = experiment["temperature"]
         seed_master = experiment["seed_master"]

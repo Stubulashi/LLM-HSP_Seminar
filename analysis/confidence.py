@@ -1,48 +1,51 @@
-"""响应处理（scaf.md 10 节 L1016-1066，裁决 C1：processing/ → analysis/）。
+"""Response processing (scaf.md section 10 L1016-1066; ruling C1: processing/ → analysis/).
 
-extract_confidence：从原始 response 稳健提取置信度（0-100）。修正 P0-2：
-- 旧版只认字面 `Confidence:<num>`（CONFIDENCE_RE），对真实输出中的
-  "Confidence score: 85/100"、"My confidence score is 85/100." 等别名零宽容，
-  导致解析率掉到 0-8%；改为按置信关键字定位 + 行尾就近取整数的策略。
-- 规避旧版取 matches[-1] 在整个 response 里抓最后任意数字（易把 prose 尾数
-  或分子误当置信）的陷阱：改为自底向上扫行、取最后一个含置信关键字行内第一个
-  <=100 的整数。无有效匹配返回 None（不静默错值）。
+extract_confidence: robustly extract the confidence (0-100) from a raw response. Fix P0-2:
+- The old version only accepted the literal `Confidence:<num>` (CONFIDENCE_RE) and had zero
+  tolerance for aliases common in real output such as "Confidence score: 85/100" or
+  "My confidence score is 85/100.", which dropped the parse rate to 0-8%; the new strategy
+  locates the confidence keyword and takes the nearest integer at the end of the line.
+- It also avoids the old trap of matches[-1] grabbing the last arbitrary number in the whole
+  response (easily a number at the end of prose or a numerator): instead it scans lines from
+  the bottom and takes the first integer <=100 after the keyword on the last keyword line.
+  With no valid match it returns None (never a silently wrong value).
 
-extract_interpretation：去除含置信自报告/编号格式噪声，保留解释文本（P1-5
-归一化，避免 prompt 回显混杂进 embedding 语义）。
+extract_interpretation: removes confidence self-reports and numbered-format noise, keeping
+the interpretation text (P1-5 normalisation, so prompt echoes do not pollute the embedding).
 """
 
 from __future__ import annotations
 
 import re
 
-# 兼容低容量模型常见别名：Confidence / confidence score / confidence level
+# tolerate aliases common in low-capacity models: Confidence / confidence score / confidence level
 CONF_KEYWORD = re.compile(r"confidence\s*\b", re.IGNORECASE)
-# 行内靠近置信关键字的整数（0-100，天然排除 "85/100" 的分母 100）
+# integers near the confidence keyword within the line (0-100; the denominator 100 of "85/100" is naturally excluded)
 _INT = re.compile(r"(\d{1,3})")
-# 旧格式专名（兼容历史测试：整行 `Confidence: 65`）
+# legacy format pattern (kept for historical tests: a whole line `Confidence: 65`)
 CONFIDENCE_RE = re.compile(r"Confidence\s*:\s*(\d{1,3})", re.IGNORECASE)
 
-# prompt 结构性回显关键词：模型常把 prompt 里的章节名/引导句原样复述成独立行，
-# 这些不携带新语义，却会污染 embedding（P1-5 归一化）。仅当整行**无后续正文**时剔除。
+# Structural prompt-echo keywords: models often repeat section names / lead-in sentences from the prompt
+# as standalone lines. They carry no new semantics but pollute the embedding (P1-5 normalisation),
+# so they are dropped only when the line has no following body text.
 _ECHO_HEADINGS = (
     "explanation", "final answer", "answer to the question",
     "current situation interpretation", "character intention",
     "possible intentions or beliefs", "potential intentions or beliefs",
     "current understanding", "confidence",
 )
-# 匹配：可选中英文数字序数前缀 + 可选冒号/破折号结尾，行内无其它正文
+# Matches: optional numeric ordinal prefix + optional colon/dash ending, with no other text on the line
 _ECHO_LINE = re.compile(
     r"^(?:\d+[\.\\)]\s*)?(?:[A-Za-z]+\.)?\s*"
     r"([a-z \-]+?)\s*[:\-]?\s*$",
     re.IGNORECASE,
 )
-# 低信息退化填充：0.5B 常循环“就绪/下一句”填充，无解释语义
+# Low-information degenerate filler: 0.5B models often loop "ready for the next..." lines with no interpretative content
 _FILLER = re.compile(r"^(?:i'?m )?ready for the next (?:sentence|line)", re.IGNORECASE)
 
 
 def _is_structural_echo(line: str) -> bool:
-    """该行是否为无正文的 prompt 章节/头回显，应剔除。"""
+    """Whether the line is a body-less prompt section/heading echo that should be dropped."""
     if _FILLER.search(line):
         return True
     m = _ECHO_LINE.match(line)
@@ -53,7 +56,7 @@ def _is_structural_echo(line: str) -> bool:
 
 
 def _line_confidence(line: str) -> int | None:
-    """取含置信关键字行内第一个 <=100 的整数；无则 None。"""
+    """Take the first integer <=100 after the confidence keyword on the line; None if there is none."""
     kw = CONF_KEYWORD.search(line)
     if not kw:
         return None
@@ -66,11 +69,11 @@ def _line_confidence(line: str) -> int | None:
 
 
 def extract_confidence(text: str) -> int | None:
-    """稳健提取置信度：自底向上扫行，最后一个含置信关键字行确定值。
+    """Robustly extract the confidence: scan lines bottom-up; the last line containing a confidence keyword decides.
 
-    - 命中含置信关键词的行，取其行内（关键字之后）第一个 0-100 整数。
-    - 整段无任何置信关键字时，回退旧正则从整 text 取最后一个 `<num>`
-      （保留历史行为；单元测试 test_extract_confidence_takes_last 覆盖）。
+    - On a matching line, take the first 0-100 integer after the keyword.
+    - When the whole text has no confidence keyword, fall back to the old regex taking the
+      last `<num>` of the text (historical behaviour; covered by the unit test test_extract_confidence_takes_last).
     """
     text = text or ""
     lines = text.splitlines() or [text]
@@ -78,7 +81,7 @@ def extract_confidence(text: str) -> int | None:
         val = _line_confidence(line)
         if val is not None:
             return max(0, min(100, val))
-    # 回退：旧款整文本末匹配（仅当不存在可定位的置信行时触发）
+    # fallback: legacy whole-text last-match (only when no locatable confidence line exists)
     matches = CONFIDENCE_RE.findall(text)
     if not matches:
         return None
@@ -86,15 +89,16 @@ def extract_confidence(text: str) -> int | None:
 
 
 def _is_confidence_line(stripped: str) -> bool:
-    """行首（可带编号）直接以置信开头且无正文前缀 → 纯置信行。"""
+    """The line starts (optionally after a number) directly with confidence and has no body prefix → a pure confidence line."""
     return bool(re.match(r"^(?:\d+[\.\)]\s*)?confidence\b", stripped, re.IGNORECASE))
 
 
 def _strip_trailing_confidence(stripped: str) -> str:
-    """行内剥离置信自报段：保留 confidence 关键字之前的正文（如“Sarah said… Confidence: 85”）。
+    """Strip the confidence self-report from within the line, keeping the body before the confidence keyword (e.g. "Sarah said… Confidence: 85").
 
-    修复：v1.2 直答模板下模型常把答案与置信写在同一行，旧逻辑整行删除导致答案丢失。
-    仅当行首即 confidence（纯置信行）时整行丢弃（调用方先行判断）。
+    Fix: with the v1.2 direct-answer template the model often writes the answer and the
+    confidence on the same line, and the old whole-line deletion lost the answer. A line is
+    dropped entirely only when it starts with confidence (a pure confidence line; the caller checks this first).
     """
     m = CONF_KEYWORD.search(stripped)
     if not m:
@@ -104,14 +108,16 @@ def _strip_trailing_confidence(stripped: str) -> str:
 
 
 def extract_interpretation(text: str) -> str:
-    """去除置信度段与格式噪声，返回解释文本（scaf.md L1051-1065）。
+    """Remove confidence segments and format noise and return the interpretation text (scaf.md L1051-1065).
 
-    处理顺序：
-    ① 纯置信行（行首 confidence，无正文前缀）整行剔除；
-    ② 其余含置信自报的行，只剥离 confidence 及其后段落，保留前缀正文
-       （修复“单行答案+Confidence”被整行误删）；
-    ③ 无正文的 prompt 章节/头回显（如 “5. Explanation”）与低信息退化填充剔除。
-    其余保留拼接，保证 embedding/judge 只对解释正文建模。
+    Order of operations:
+    1) a pure confidence line (starts with confidence, no body prefix) is dropped entirely;
+    2) on other lines with a confidence self-report, only the confidence part and everything
+       after it is stripped, keeping the body prefix (fixes "single-line answer + Confidence"
+       being deleted as a whole);
+    3) body-less prompt section/heading echoes (e.g. "5. Explanation") and low-information
+       degenerate filler are dropped.
+    The rest is kept and joined, so the embedding/judge only model the interpretation body.
     """
     if not text:
         return ""

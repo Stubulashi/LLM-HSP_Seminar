@@ -1,28 +1,28 @@
-# IPLE 核心代码发布版 — 忽略规则（安全网）
-# 实验数据与输出（不入库）
+# IPLE core code release — ignore rules (safety net)
+# Source materials and local outputs (kept out of git)
 data/
 results/
 logs/
 cloud_backup/
 datasets/
 
-# 环境与缓存
+# Environment and caches
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 .cache/
 
-# 模型权重（本地缓存不提交）
+# Model weights (local cache, never committed)
 *.safetensors
 *.bin
 
-# 密钥与本地环境（绝不提交）
+# Secrets and local environment (never committed)
 .env
 .env.*
 !*.env.example
 
-# 大体积归档与外链交付物（见根目录 ASSETS_INDEX.md 第 7 节）
+# Bulk archives and externally delivered artifacts (see section 7 of ASSETS_INDEX.md in the main project)
 *.tar.gz
 *.zip
 *.pdf

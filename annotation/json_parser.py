@@ -1,7 +1,7 @@
-"""LLM 输出 JSON 提取（scaf.md 5.4）：find first { / find last } → json.loads。
+"""Extract JSON from LLM output (scaf.md 5.4): find first { / find last } → json.loads.
 
-重试策略为补充约定（docs/decisions.md）：parse 失败最多重试 2 次，
-仍失败则标记待人工 review。
+The retry policy is a supplementary convention (docs/decisions.md): a parse failure is
+retried up to 2 times; if it still fails, the item is flagged for human review.
 """
 
 from __future__ import annotations
@@ -12,11 +12,11 @@ MAX_PARSE_RETRIES = 2
 
 
 class JsonParseError(ValueError):
-    """LLM 输出中无法提取合法 JSON。"""
+    """No valid JSON could be extracted from the LLM output."""
 
 
 def parse_json(response: str) -> dict:
-    """从模型输出提取 JSON 对象（首个 { 到末个 }，scaf.md L558-574）。"""
+    """Extract a JSON object from the model output (first { to last }; scaf.md L558-574)."""
     if not isinstance(response, str) or not response.strip():
         raise JsonParseError("empty model response")
     start = response.find("{")

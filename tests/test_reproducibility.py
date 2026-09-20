@@ -1,4 +1,4 @@
-"""自测补充（阶段 4）：可复现性抽查 + 扩展性演练（scaf.md Principle 2 / L1419-1463）。"""
+"""Supplementary self-test (stage 4): reproducibility spot check + extensibility drill (scaf.md Principle 2 / L1419-1463)."""
 
 from config.config_manager import ConfigManager
 from data_manager import DataManager
@@ -18,7 +18,7 @@ STORY = {
 
 
 def test_reproducibility_same_seed_same_output(tmp_path):
-    """同 seed 同配置连续两次 run，raw 响应序列一致（scaf.md Principle 2）。"""
+    """Two consecutive runs with the same seed and config produce identical raw response sequences (scaf.md Principle 2)."""
     cfg = ConfigManager()
 
     def run_once():
@@ -36,9 +36,9 @@ def test_reproducibility_same_seed_same_output(tmp_path):
 
 
 def test_extension_new_model_config_no_code_change(tmp_path):
-    """扩展性：models.yaml 新增模型配置后，factory 直接可用（实验代码零改动）。"""
+    """Extensibility: after adding a model config to models.yaml the factory works directly (no experiment-code changes)."""
     cfg = ConfigManager()
-    # 模拟新增模型配置（裁决 C14：加模型 = 新增配置 + 实现 generate）
+    # simulate a new model config (ruling C14: adding a model = new config + a generate implementation)
     cfg.config["models"]["mock2"] = {
         "family": "Mock", "path": "mock/mock-2B", "backend": "huggingface",
         "size": "2B", "training": "instruction",
@@ -48,4 +48,4 @@ def test_extension_new_model_config_no_code_change(tmp_path):
     factory = ModelFactory(cfg)
     model = factory.create("mock2")
     assert model.path == "mock/mock-2B"
-    # 不实际加载（真实模型下载），仅验证工厂分发链路
+    # do not actually load (that would download a real model); only verify the factory dispatch chain

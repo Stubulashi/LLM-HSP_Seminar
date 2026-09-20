@@ -1,4 +1,4 @@
-"""LLMEquivalenceJudge 回归测试（不联网、不加载真实模型）。"""
+"""LLMEquivalenceJudge regression tests (offline; no real models loaded)."""
 import os
 
 import pytest
@@ -17,7 +17,7 @@ def test_parse_label():
     assert _parse_label("yes, both correct") is True
     assert _parse_label("No.") is False
     assert _parse_label("") is None
-    assert _parse_label("maybe") is None  # 无法判定 → None，而非 False
+    assert _parse_label("maybe") is None  # undecidable → None, not False
 
 
 def test_invalid_provider_raises():
@@ -29,25 +29,25 @@ def test_api_provider_missing_key_raises(monkeypatch):
     for k in ("DEEPSEEK_API_KEY", "KIMI_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     import analysis.judge as jmod
-    monkeypatch.setattr(jmod, "load_dotenv_silent", lambda: None)  # 禁用 .env 回填
+    monkeypatch.setattr(jmod, "load_dotenv_silent", lambda: None)  # disable .env backfill
     judge = LLMEquivalenceJudge(provider="deepseek")
     with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY"):
         judge.load()
 
 
 def test_env_or_raise_message():
-    with pytest.raises(RuntimeError, match="未配置"):
+    with pytest.raises(RuntimeError, match="not set"):
         _env_or_raise("IPLE_NONEXISTENT_KEY_XYZ")
 
 
 def test_dotenv_silent_runs():
-    # 不抛即可（有/无 .env 都不影响）
+    # just needs to not raise (works with or without .env)
     load_dotenv_silent()
     assert True
 
 
 def test_judge_analyze_core(tmp_path):
-    """judge_analyze 核心：假 judge_fn 并发判定并写 accuracy/emergence CSV（scope last/all）。"""
+    """judge_analyze core: a fake judge_fn decides concurrently and writes accuracy/emergence CSVs (scope last/all)."""
     import csv
 
     from data_manager import DataManager
@@ -74,16 +74,16 @@ def test_judge_analyze_core(tmp_path):
     acc = list(csv.DictReader(open(out_last + "/accuracy.csv", encoding="utf-8")))
     emg = list(csv.DictReader(open(out_last + "/emergence.csv", encoding="utf-8")))
     assert acc[0]["accuracy"] == "1.0"
-    assert emg[0]["emergence_point"] == ""  # scope=last 不判逐 step
+    assert emg[0]["emergence_point"] == ""  # scope=last does not judge step by step
 
     out_all = str(tmp_path / "out_all")
     judge_analyze_groups(groups, dm, judge_hit, "all", out_all, max_workers=2)
     emg2 = list(csv.DictReader(open(out_all + "/emergence.csv", encoding="utf-8")))
-    assert emg2[0]["emergence_point"] == "2"  # 首个判等价的 step
+    assert emg2[0]["emergence_point"] == "2"  # first step judged equivalent
 
 
 def test_cached_judge_fn_handles_dict_and_empty_selfheal(tmp_path):
-    """回归：judge 返回 dict 时应取 label；污染空缓存('')应自愈重新判定。"""
+    """Regression: a dict-returning judge should yield its label; a polluted empty cache ('') should self-heal and re-judge."""
     import threading
     from hashlib import sha1
 
@@ -91,21 +91,21 @@ def test_cached_judge_fn_handles_dict_and_empty_selfheal(tmp_path):
 
     lock = threading.Lock()
     key = sha1("|q|a|g".encode("utf-8")).hexdigest()
-    cache = {key: ""}  # 旧版污染的空值（真实键）
+    cache = {key: ""}  # the empty value written by the old version (real key)
     calls = {"n": 0}
 
     def judge_like_dict(q, a, g):
         calls["n"] += 1
-        return {"label": True, "rationale": "ok"}  # 模拟 judge.judge 的 dict 返回
+        return {"label": True, "rationale": "ok"}  # simulate the dict return of judge.judge
 
     jf = _cached_judge_fn(judge_like_dict, cache, lock)
-    # 污染空值键 → 视为未命中，重新判定并覆盖为 '1'
+    # a polluted empty value counts as a miss: re-judge and overwrite with '1'
     assert jf("q", "a", "g") is True
     assert cache[key] == "1"
-    # 新键正常写入
+    # a fresh key is written normally
     assert jf("q2", "a2", "g2") is True
     assert all(v in ("1", "0") for v in cache.values())
-    # 命中缓存后不再调 judge
+    # after a cache hit the judge is no longer called
     n0 = calls["n"]
     assert jf("q", "a", "g") is True
     assert calls["n"] == n0

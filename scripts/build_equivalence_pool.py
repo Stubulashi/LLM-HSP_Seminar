@@ -1,15 +1,15 @@
-"""A1: 生成"人工等价判定"候选池（data/manual_equivalence/labels.csv）。
+"""A1: build the "manual equivalence judgement" candidate pool (data/manual_equivalence/labels.csv).
 
-分层抽样用于校验/校准 judge（本地或 API）：
-- forced_conflict：judge 与余弦已知冲突样本（含 faux_pas/sfp001 余弦误报、
-  implicature/swmimp001 余弦漏报）及其 qwen15b 对照；
-- boundary：cos_sim ∈ [0.5, 0.9]（0.7 阈值附近）；
-- high_cos：cos_sim ≥ 0.85 且含否定词/语义反向嫌疑（潜在误报）；
-- low_cos_shared：cos_sim ≤ 0.30 但与 gold 有词/字重叠（潜在漏报）；
-- random：确定性种子随机基线（每任务）。
+Layered sampling used to check/calibrate the judge (local or API):
+- forced_conflict: samples where the judge and cosine are known to conflict (including the
+  faux_pas/sfp001 cosine false positive and the implicature/swmimp001 cosine miss) and their qwen15b counterparts;
+- boundary: cos_sim ∈ [0.5, 0.9] (around the 0.7 threshold);
+- high_cos: cos_sim ≥ 0.85 with a negation word / suspected inverted meaning (possible false positives);
+- low_cos_shared: cos_sim ≤ 0.30 but with word/character overlap with the gold (possible misses);
+- random: a deterministic-seed random baseline (per task).
 
-字段见 CSV 表头；human_label / judge_* 留空待人工与 judge 回填。
-用法： python -X utf8 scripts/build_equivalence_pool.py
+Fields are in the CSV header; human_label / judge_* are left blank for human and judge backfill.
+Usage: python -X utf8 scripts/build_equivalence_pool.py
 """
 import argparse, csv, json, os, re, sys
 
@@ -39,7 +39,7 @@ def _has_negation(text: str) -> bool:
 
 
 def _shared_tokens(a: str, b: str) -> bool:
-    # 中文：共享任意 2-gram；英文：共享实词（去停用词）
+    # Chinese: share any 2-gram; English: share content words (stop words removed)
     if re.search(r"[\u4e00-\u9fff]", a + b):
         bigrams = {a[i:i + 2] for i in range(len(a) - 1)}
         return any(bb in b for bb in bigrams if bb.strip())
@@ -64,8 +64,8 @@ def main() -> int:
     svc = EmbeddingService("sentence-transformers/all-MiniLM-L6-v2",
                            cache_dir="results/embeddings")
 
-    # 逐 record 计算 (cos_sim, reason 候选所需信息)
-    rows = {}  # (model,task,story,rep,step) -> dict 候选
+    # per-record computation of (cos_sim, the information needed for reason candidates)
+    rows = {}  # (model,task,story,rep,step) -> candidate dict
     import glob
     files = sorted(glob.glob(os.path.join("results", "raw", "qwen05b", "*", "*", "run*.json")))
     files += sorted(glob.glob(os.path.join("results", "raw", "qwen15b", "*", "*", "run*.json")))
@@ -81,7 +81,7 @@ def main() -> int:
         except FileNotFoundError:
             continue
         ann_task = ann.get("task")
-        if ann_task != task_dir:  # task-drift 同 analyze 过滤
+        if ann_task != task_dir:  # task drift; same filter as analyze
             continue
         gold = ann.get("gold_points") or ann.get("gold_answer")
         q = ann.get("question", "")
@@ -110,13 +110,13 @@ def main() -> int:
         if key in rows and key not in selected:
             selected[key] = reason
 
-    # L0 forced（取该 story 的末步 key）
+    # L0 forced (take the last-step key of that story)
     for m, t, s in forced_keys:
         cand = [k for k in rows if k[0] == m and k[1] == t and k[2] == s]
         if cand:
             add(max(cand, key=lambda k: k[4]), "forced_conflict")
 
-    # 其余层按末步行 + 部分边界中间步
+    # remaining layers: last steps plus some boundary mid-steps
     per_layer = {}
     for (m, t, s, rep, step), info in rows.items():
         cos = info["cos_sim"]
@@ -132,7 +132,7 @@ def main() -> int:
     rng = random.Random(args.seed)
     for layer in ("boundary", "high_cos", "low_cos_shared"):
         bucket = per_layer.get(layer, [])
-        # 每任务最多 max-per-layer 条
+        # at most max-per-layer rows per task
         by_task = {}
         for info, key in bucket:
             by_task.setdefault(info["task"], []).append(key)
@@ -140,7 +140,7 @@ def main() -> int:
             rng.shuffle(keys)
             for k in keys[:args.max_per_layer]:
                 add(k, layer)
-    # 随机基线
+    # random baseline
     for t in ("false_belief", "faux_pas", "implicature"):
         cand = [k for k, info in rows.items() if info["task"] == t and k not in selected]
         rng.shuffle(cand)

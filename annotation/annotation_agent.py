@@ -1,8 +1,9 @@
-"""Annotation Agent（pipeline.md L415-510 / scaf.md 5.2-5.4）。
+"""Annotation Agent (pipeline.md L415-510 / scaf.md 5.2-5.4).
 
-特殊 LLM 调用——它是数据工具而非实验对象（scaf.md L461-467）。
-流程：build_annotation_prompt → model.generate → parse_json → validate；
-失败重试最多 2 次（补充约定），仍失败抛 AnnotationError 标记待人工 review。
+A special LLM call: this is a data tool, not an experiment subject (scaf.md L461-467).
+Flow: build_annotation_prompt → model.generate → parse_json → validate;
+failures retry up to 2 extra times (supplementary convention); if it still fails, raise
+AnnotationError so the item can be flagged for human review.
 """
 
 from __future__ import annotations
@@ -13,21 +14,21 @@ from annotation.validator import AnnotationValidator
 
 
 class AnnotationError(RuntimeError):
-    """标注失败（含重试后仍失败）。"""
+    """Annotation failed (including after retries)."""
 
 
 def build_annotation_prompt(sentence_list: list[str], template: str) -> str:
-    """按标注模板组装 prompt（pipeline.md L434-460 措辞，裁决 C8）。"""
+    """Build the prompt from the annotation template (wording per pipeline.md L434-460; ruling C8)."""
     numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(sentence_list, start=1))
     return template.format(sentences=numbered)
 
 
 class AnnotationAgent:
     def __init__(self, model, prompt_template: str, max_attempts: int = 3):
-        """model 仅需实现 generate(prompt) -> str（低耦合，scaf.md Principle 1）。"""
+        """model only needs to implement generate(prompt) -> str (low coupling; scaf.md Principle 1)."""
         self.model = model
         self.prompt_template = prompt_template
-        self.max_attempts = max_attempts  # 首次 + 重试 2 次
+        self.max_attempts = max_attempts  # first attempt + 2 retries
 
     def annotate(self, sentence_list: list[str]) -> dict:
         prompt = build_annotation_prompt(sentence_list, self.prompt_template)
@@ -44,7 +45,7 @@ class AnnotationAgent:
             except (JsonParseError, AnnotationError) as exc:
                 last_error = exc
             if attempt < self.max_attempts:
-                # 重试时提示只返回合法 JSON（scaf.md L546-553 场景的应对）
+                # on retries, remind the model to return valid JSON only (response to the scenario in scaf.md L546-553)
                 prompt = self.prompt_template.format(
                     sentences="\n".join(
                         f"{i}. {s}" for i, s in enumerate(sentence_list, start=1)
@@ -55,5 +56,5 @@ class AnnotationAgent:
         ) from last_error
 
 
-# 供人类审查展示的 function 枚举（pipeline.md L441-449）
+# function enum presented in human review (pipeline.md L441-449)
 FUNCTION_OPTIONS = FUNCTIONS

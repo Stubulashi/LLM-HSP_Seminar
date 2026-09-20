@@ -1,7 +1,7 @@
-"""Annotation Validator（pipeline.md L514-543 / scaf.md 5.5，裁决 C8/C11 扩展）。
+"""Annotation Validator (pipeline.md L514-543 / scaf.md 5.5; extended by rulings C8/C11).
 
-校验：必填字段（id/task/sentences/critical_sentence/gold_answer）、
-task 枚举、function 枚举、句子 id 连续（自 1 起）、critical_sentence 在界内。
+Checks: required fields (id/task/sentences/critical_sentence/gold_answer), the task enum,
+the function enum, continuous sentence ids (starting at 1), and critical_sentence in range.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from annotation.schema import FUNCTIONS, REQUIRED_FIELDS, SENTENCE_FIELDS, TASKS
 
 class AnnotationValidator:
     def validate(self, data: dict) -> tuple[bool, list[str]]:
-        """返回 (是否通过, 错误列表)。"""
+        """Returns (passed, list of errors)."""
         errors: list[str] = []
 
         for field in REQUIRED_FIELDS:

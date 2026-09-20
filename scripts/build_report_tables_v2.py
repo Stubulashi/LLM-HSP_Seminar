@@ -1,32 +1,32 @@
-"""报告草稿包 v2：表格与中间数据的重算与固化（只读 cloud_backup 权威产物）。
+"""Report draft package v2: recomputation and freezing of tables and intermediate data (read-only from the authoritative cloud_backup artifacts).
 
-输入（权威源 cloud_backup/，本地补跑件在仓库 data/、cloud_backup/*.txt）：
-  cloud_backup/results/processed_judge/accuracy.csv           6770 行（8 档 × 280 story × 3 rep + bf16 50）
-  cloud_backup/results/processed_judge/emergence.csv          同规模，含 emergence_point
-  cloud_backup/results/processed_judge_official/accuracy.csv  4200 行（正式 5 档，§3.1 口径）
+Inputs (authoritative source cloud_backup/; local re-runs live in the repo data/, cloud_backup/*.txt):
+  cloud_backup/results/processed_judge/accuracy.csv           6770 rows (8 tiers × 280 stories × 3 reps + bf16 50)
+  cloud_backup/results/processed_judge/emergence.csv          same scale, with emergence_point
+  cloud_backup/results/processed_judge_official/accuracy.csv  4200 rows (the official five tiers, the section 3.1 convention)
   cloud_backup/results/processed_judge_official/emergence.csv
-  cloud_backup/results/processed/transition_stats.csv         回退/恢复汇总（28 行）
-  cloud_backup/results/processed/trajectory_similarity.csv    每 run stability 列（6770 行）
-  data/annotated/<story>.json                                 句数（frac_of_len 与末步判定）
-  data/manual_equivalence/{labels,judge_sidecar,judge_exclude}.csv  判定准入复算
+  cloud_backup/results/processed/transition_stats.csv         regression/recovery summary (28 rows)
+  cloud_backup/results/processed/trajectory_similarity.csv    per-run stability column (6770 rows)
+  data/annotated/<story>.json                                 sentence counts (frac_of_len and last-step decisions)
+  data/manual_equivalence/{labels,judge_sidecar,judge_exclude}.csv  judge admission recomputation
 
-输出（docs/submission/report_draft_v2/）：
-  tables/table1_acc_ci.csv                  模型×任务 judge-acc + story 级 cluster bootstrap 95% CI
-  tables/table2_same_scale.csv              同规模 judge-acc 对比（Qwen vs DeepSeek，Δ）
-  tables/table3_process_profile.csv         过程画像（正式 5 档 × 指标）
-  tables/table4_emergence.csv               §3.1 口径涌现指标（official 4200）
-  tables/table5_repetition_consistency.csv  story 级 3 次重复一致性
-  tables/table6_source_subsets.csv          false_belief 内 OpenToM vs FauxPas 子集
-  tables/table7_admission_quantization.csv  判定准入 + 量化对照（long 格式：block,scope,metric,value,note）
-  data/acc_by_story.csv                     bootstrap 重采样单元（model×task×story 平均准确率）
-  data/bootstrap_summary.csv                bootstrap 分布摘要（seed/迭代/均值/分位）
-  data/repetition_detail.csv                重复明细（rep1..rep3 + all_equal）
-  data/source_subset_runs.csv               false_belief 来源子集 run 明细
-  data/quantization_detail.csv              bf16 与同 story AWQ 对照明细
-  data/sources/<name>.csv                   草稿引用的源文件逐字副本（便于整包携带与核对）
-  data/sources_manifest.csv                 源副本清单（原始路径/行数/sha256 前 16 位）
+Outputs (docs/submission/report_draft_v2/):
+  tables/table1_acc_ci.csv                   model × task judge-acc + story-level cluster bootstrap 95% CI
+  tables/table2_same_scale.csv               same-scale judge-acc comparison (Qwen vs DeepSeek, delta)
+  tables/table3_process_profile.csv          process profile (official five tiers × metrics)
+  tables/table4_emergence.csv                section 3.1 emergence metrics (official 4200)
+  tables/table5_repetition_consistency.csv   story-level consistency across the 3 repetitions
+  tables/table6_source_subsets.csv           OpenToM vs FauxPas subsets within false_belief
+  tables/table7_admission_quantization.csv   judge admission + quantization comparison (long format: block,scope,metric,value,note)
+  data/acc_by_story.csv                      bootstrap resampling units (model×task×story mean accuracy)
+  data/bootstrap_summary.csv                 bootstrap distribution summary (seed/iterations/mean/percentiles)
+  data/repetition_detail.csv                 repetition detail (rep1..rep3 + all_equal)
+  data/source_subset_runs.csv                false_belief source-subset run detail
+  data/quantization_detail.csv               bf16 vs same-story AWQ detail
+  data/sources/<name>.csv                    verbatim copies of the source files cited by the draft (self-contained packaging and verification)
+  data/sources_manifest.csv                  source-copy manifest (original path / rows / first 16 hex digits of sha256)
 
-用法： python -X utf8 scripts/build_report_tables_v2.py
+Usage: python -X utf8 scripts/build_report_tables_v2.py
 """
 import csv
 import hashlib
@@ -55,7 +55,7 @@ TASKS = ("false_belief", "faux_pas", "implicature")
 SCALE_PAIRS = (("7B", "qwen7b", "deepseek7b"),
                ("14B", "qwen14b", "deepseek14b"),
                ("32B", "qwen32b", "deepseek32b"))
-# 草稿引用的源文件副本清单：(输出名, 原始路径)
+# list of source-file copies cited by the draft: (output name, original path)
 SOURCE_FILES = (
     ("accuracy_processed_judge_6770.csv",
      "cloud_backup/results/processed_judge/accuracy.csv"),
@@ -94,7 +94,7 @@ SENT_LEN = {}
 
 
 def load_csv(path):
-    with open(path, encoding="utf-8-sig") as fh:  # utf-8-sig 兼容 BOM（judge_sidecar.csv）
+    with open(path, encoding="utf-8-sig") as fh:  # utf-8-sig tolerates the BOM (judge_sidecar.csv)
         return list(csv.DictReader(fh))
 
 
@@ -128,7 +128,7 @@ def acc_of(rows):
 
 # ---------------------------------------------------------------- T1: acc + CI
 def build_acc_ci(rows_main):
-    """模型×任务准确率与 story 级 cluster bootstrap 95% CI。"""
+    """Model × task accuracy with a story-level cluster-bootstrap 95% CI."""
     by_story = defaultdict(list)          # (model,task,story) -> [1/0...]
     for r in rows_main:
         if r["model"] not in MAIN_MODELS:
@@ -410,9 +410,9 @@ def build_admission_quantization(rows_main):
     return out
 
 
-# ------------------------------------------- 源文件副本（自包含）
+# ------------------------------------------- source-file copies (self-contained)
 def sync_sources():
-    """把草稿引用的源 CSV 复制进 data/sources/，并写清单（原始路径/行数/sha256 前 16 位）。"""
+    """Copy the source CSVs cited by the draft into data/sources/ and write the manifest (original path / rows / first 16 hex digits of sha256)."""
     dst_dir = os.path.join(DATA, "sources")
     os.makedirs(dst_dir, exist_ok=True)
     manifest = []
@@ -436,7 +436,7 @@ def checks(rows_main, table1, scale, emerg, reps, subset, adm):
         for r in tbl:
             if r["model"] == model and (task is None or r["task"] == task):
                 return r
-    print("[build_tables] ---- 与 experiment_report 对表（抽检）----")
+    print("[build_tables] ---- spot-check against experiment_report ----")
     exp_overall = {"qwen7b": 0.496, "qwen14b": 0.567, "qwen32b": 0.548,
                    "deepseek7b": 0.139, "deepseek14b": 0.538, "deepseek32b": 0.604}
     for m, e in exp_overall.items():

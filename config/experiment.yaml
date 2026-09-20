@@ -1,20 +1,23 @@
-# IPLE 实验配置
-# P1-4 校准警示：scoring.threshold(0.7) 为裁决 C10 初值，无健康子集校准依据。
-# 当前对“整段长 gold 散文 vs 模型整段 response”的 embedding 比对会被通用措辞主导、
-# 产出近噪声 0/1。正式扩展前须先在健康子集上校准，或以 gold_points 多参考/LLM judge替换。
+# IPLE experiment configuration
+# Calibration warning (P1-4): scoring.threshold (0.7) is the initial value from ruling C10,
+# with no calibration on a healthy subset. Comparing a full long gold prose against a full
+# model response by embedding is dominated by generic wording overlap and yields near-noise
+# 0/1 scores. Before scaling up, calibrate on a healthy subset, or replace the comparison
+# with gold_points multi-reference / LLM judge scoring.
 experiment:
   seed_master: 42
   temperature: 0.7
   max_tokens: 512
   repetitions: 3
-  annotation_model: qwen7b   # 裁决 C15：Annotation Agent 默认模型（scaf.md L459-468 未指定）
+  annotation_model: qwen7b   # ruling C15: default model for the Annotation Agent (scaf.md L459-468 did not specify one)
 
 scoring:
-  # method 三选一：embedding_similarity(余弦，默认) / local_judge / api_judge。
-  # judge 模式需在 CLI 装配 judge_fn（main.py analyze --scoring-method api_judge）；
-  # 人工等价子集（64 行，排除空响应后 58 行）实测：DeepSeek API judge acc=0.966/κ=0.733 达标，
-  # 故正式判定器=api_judge+deepseek；本地 qwen15b/7b judge 不合格（κ<0.35）勿用。
-  method: embedding_similarity   # 默认余弦；云端正式分析用 analyze --scoring-method api_judge
-  judge_provider: deepseek      # api_judge 时读取 .env DEEPSEEK_*（见 analysis/judge.py）
-  threshold: 0.7  # 仅 embedding_similarity 用；judge 模式不使用
+  # method (choose one): embedding_similarity (cosine, default) / local_judge / api_judge.
+  # The judge modes need a judge_fn wired up in the CLI (main.py analyze --scoring-method api_judge);
+  # on the manual equivalence subset (64 rows, 58 after dropping empty responses):
+  # DeepSeek API judge reached acc=0.966 / kappa=0.733 (target met), so the official judge is
+  # api_judge + deepseek; local qwen15b/7b judges are not qualified (kappa<0.35), do not use them.
+  method: embedding_similarity   # default cosine; the cloud official analysis uses analyze --scoring-method api_judge
+  judge_provider: deepseek      # api_judge reads .env DEEPSEEK_* (see analysis/judge.py)
+  threshold: 0.7  # embedding_similarity only; unused in judge mode
   embedding_model: sentence-transformers/all-MiniLM-L6-v2

@@ -1,28 +1,31 @@
-"""docs/submission/report_final/report_final.md（中英对照）→ report_final/report_draft.tex（仅英文）同步与校验工具。
+"""docs/submission/report_final/report_final.md (bilingual CN/EN) → report_final/report_draft.tex (English only) sync and check tool.
 
-与 v2（scripts/sync_report_draft_v2.py）的关系：解析与校验规则完全一致（v2 脚本及其产物保持不动），
-做以下工程化调整：
-  1) 默认路径改指 docs/submission/report_final/（逐章推进的正式报告稿）；
-  2) 新增可选参数 --md / --tex，便于后续章节或其它目录复用同一套同步机制；
-  3) 排版增强：彩色链接与 PDF 元数据、节级 PDF 书签（\\phantomsection\\addcontentsline）、
-     裸 URL → \\url、*…* → \\textit、图注 \\caption*（消除 article 自动编号与手写编号重复）；
-  4) 默认输入改指正式版 report_final.md，并支持“无标记正式版”解析（2026-09-19）。
+Relation to v2 (scripts/sync_report_draft_v2.py): the parsing and validation rules are identical
+(v2 and its outputs stay untouched); the engineering changes here are:
+  1) default paths now point at docs/submission/report_final/ (the final report written chapter by chapter);
+  2) new optional --md / --tex arguments, so later chapters or other directories can reuse the same sync mechanism;
+  3) typesetting enhancements: coloured links and PDF metadata, per-section PDF bookmarks
+     (\\phantomsection\\addcontentsline), bare URLs → \\url, *…* → \\textit, figure captions via
+     \\caption* (removes the duplicate between the article class auto-numbering and handwritten numbers);
+  4) the default input is now the final report_final.md, with support for the "untagged final version" (2026-09-19).
 
-两种输入模式（自动识别：出现 [Pn-X] 标记即模式 A）：
-  A. 带标记草稿：`**[Pn-CN]**` / `**[Pn-EN]**`，编号从 1 起连续唯一、中英成对（留档备份用）；
-  B. 无标记正式版（默认输入）：普通文本行即段落，按“先 CN 后 EN、严格交替、偶数成对”
-     校验，配对编号按出现顺序派生（仅用于 tex 的 % [Pn] 注释）。
-  - 仅提取英文段落进入 tex（中文与说明性文本不进入）；
-  - 节标题 `## N. English / 中文` → \\section*；小节 `### N.M English / 中文` → \\subsection*；
-  - md 图片行 `![caption](path)` → figure 环境（相对路径原样写入）；
-  - tex 与 md 英文逐段一致（--check 校验）。
+Two input modes (auto-detected: any [Pn-X] tag selects mode A):
+  A. tagged draft: `**[Pn-CN]**` / `**[Pn-EN]**`, numbers starting at 1, unique and continuous, CN/EN paired (kept for the archive);
+  B. untagged final version (the default input): plain text lines are paragraphs, validated as
+     "CN first, then EN, strictly alternating, even pairs"; pair numbers are derived from the order
+     of appearance (used only for the % [Pn] comments in the tex).
+  - only English paragraphs enter the tex (Chinese and explanatory text do not);
+  - section headings `## N. English / <Chinese title>` → \\section*; subsections `### N.M English / <Chinese title>` → \\subsection*;
+  - md image lines `![caption](path)` → figure environments (relative paths written through as-is);
+  - tex and md agree paragraph by paragraph in English (verified by --check).
 
-同步规则：tex 为生成物（勿手改），每次运行脚本即与 md 英文部分完全一致。
+Sync rule: the tex file is a generated artifact (never edit by hand); every run makes it match
+the English part of the md exactly.
 
-用法：
-  python -X utf8 scripts/sync_report_draft_v3.py                    # 生成/刷新 tex
-  python -X utf8 scripts/sync_report_draft_v3.py --check            # 仅校验，不一致返回非 0
-  python -X utf8 scripts/sync_report_draft_v3.py --md <md路径> --tex <tex路径>   # 覆盖默认路径
+Usage:
+  python -X utf8 scripts/sync_report_draft_v3.py                    # generate / refresh the tex
+  python -X utf8 scripts/sync_report_draft_v3.py --check            # check only; non-zero exit on mismatch
+  python -X utf8 scripts/sync_report_draft_v3.py --md <md> --tex <tex>   # override the default paths
 """
 import re
 import sys
@@ -37,7 +40,7 @@ SUB_RE = re.compile(r"^###\s+([\d.]+)\s+(.+?)\s*/\s*(.+?)\s*$")
 PAR_RE = re.compile(r"^\*\*\[P(\d+)-(CN|EN)\]\*\*\s*(.*)$")
 IMG_RE = re.compile(r"^!\[(.*)\]\((.+)\)$")
 
-# 常用 Unicode → LaTeX 映射（先转义后映射；映射引入的 $ { } 为安全代码）
+# common Unicode → LaTeX mapping (escape first, then map; the $ { } introduced by the mapping are safe code)
 UNICODE_MAP = {
     "κ": r"$\kappa$", "Δ": r"$\Delta$", "δ": r"$\delta$", "λ": r"$\lambda$",
     "≤": r"$\leq$", "≥": r"$\geq$", "≈": r"$\approx$", "×": r"$\times$",
@@ -55,7 +58,7 @@ _URL_TRAIL = {",", ".", ";", ":", ")", "]", "}", "`", "'", '"'}
 
 
 def _protect_urls(text: str):
-    """提取裸 URL → (带占位符的文本, URL 列表)；尾随标点/引号保留在文本中。"""
+    """Extract bare URLs → (text with placeholders, list of URLs); trailing punctuation/quotes stay in the text."""
     urls = []
 
     def repl(m):
@@ -70,7 +73,7 @@ def _protect_urls(text: str):
 
 
 def latex_escape(text: str) -> str:
-    """先保护裸 URL，再做单遍字符级转义、Unicode 映射与 *…*→\\textit，最后还原 URL。"""
+    """Protect bare URLs first, then do a single character-level escape pass, Unicode mapping and *…*→\\textit, restoring the URLs at the end."""
     text, urls = _protect_urls(text)
     out = []
     for ch in text:
@@ -88,19 +91,21 @@ def latex_escape(text: str) -> str:
 
 
 def parse_md(text: str):
-    """解析 md → (sections, problems, marked)。
+    """Parse md → (sections, problems, marked).
 
-    模式 A（marked=True，带标记草稿）：**[Pn-CN]** / **[Pn-EN]**，编号从 1 起连续唯一、中英成对。
-    模式 B（marked=False，无标记正式版）：普通文本行即段落，按"先 CN 后 EN、严格交替、
-    偶数成对"校验，配对编号按出现顺序派生（仅用于 tex 的 % [Pn] 注释）。
-    模式自动识别（全文出现任一 [Pn-X] 标记即按模式 A）。
+    Mode A (marked=True, a tagged draft): **[Pn-CN]** / **[Pn-EN]** pairs, numbers starting at 1,
+    unique and continuous, CN/EN paired.
+    Mode B (marked=False, the untagged final version): plain text lines are paragraphs, validated
+    as "CN first, then EN, strictly alternating, even pairs"; pair numbers are derived from the
+    order of appearance (used only for the % [Pn] comments in the tex file).
+    The mode is auto-detected (any [Pn-X] tag in the text selects mode A).
     """
     marked = bool(PAR_RE.search(text))
     sections = []
     problems = []
     cur = None
     pending = None  # (num, lang, lines)
-    seq = 0         # 模式 B 的派生编号（每对共用）
+    seq = 0         # derived pair number for mode B (shared by each pair)
 
     def has_cjk(s: str) -> bool:
         return bool(re.search(r"[\u4e00-\u9fff]", s))
@@ -112,7 +117,7 @@ def parse_md(text: str):
         num, lang, lines = pending
         body = " ".join(seg.strip() for seg in lines if seg.strip())
         if not body:
-            problems.append(f"[P{num}-{lang}] 段落内容为空")
+            problems.append(f"[P{num}-{lang}] paragraph body is empty")
         if cur is not None:
             cur["items"].append({"kind": "para", "num": num, "lang": lang, "text": body})
         pending = None
@@ -130,30 +135,30 @@ def parse_md(text: str):
         elif m_sub:
             flush_para()
             if cur is None:
-                problems.append(f"[{m_sub.group(1)}] 小节出现在任何节标题之前")
+                problems.append(f"[{m_sub.group(1)}] subsection appears before any section heading")
                 continue
             cur["items"].append({"kind": "sub", "number": m_sub.group(1),
                                  "en": m_sub.group(2).strip(), "cn": m_sub.group(3).strip()})
         elif m_img:
             flush_para()
             if cur is None:
-                problems.append(f"[IMG] {m_img.group(2)} 出现在任何节标题之前")
+                problems.append(f"[IMG] {m_img.group(2)} appears before any section heading")
                 continue
             cur["items"].append({"kind": "fig", "alt": m_img.group(1).strip(),
                                  "path": m_img.group(2).strip()})
         elif m_par:
             flush_para()
             if cur is None:
-                problems.append(f"[P{m_par.group(1)}-{m_par.group(2)}] 出现在任何节标题之前")
+                problems.append(f"[P{m_par.group(1)}-{m_par.group(2)}] appears before any section heading")
                 cur = {"number": "?", "en": "(no section)", "cn": "", "items": []}
                 sections.append(cur)
             pending = (int(m_par.group(1)), m_par.group(2), [m_par.group(3)])
         elif marked:
-            # 模式 A：普通行仅作为段的续行
+            # mode A: a plain line only continues the current paragraph
             if pending is not None:
                 pending[2].append(line)
         else:
-            # 模式 B：结构行（空行/#/>/|）刷新段落；其余文本行成段或续行
+            # mode B: structural lines (blank/#/>/|) flush the paragraph; other text lines start or continue one
             s = line.strip()
             if not s or s.startswith("#") or s.startswith(">") or s.startswith("|"):
                 flush_para()
@@ -162,7 +167,7 @@ def parse_md(text: str):
                 pending[2].append(s)
                 continue
             if cur is None:
-                problems.append("段落出现在任何节标题之前")
+                problems.append("a paragraph appears before any section heading")
                 continue
             lang = "CN" if has_cjk(s) else "EN"
             if lang == "CN":
@@ -171,7 +176,7 @@ def parse_md(text: str):
     flush_para()
 
     if marked:
-        # 模式 A 校验：编号从 1 起连续唯一、中英成对
+        # mode A validation: numbers start at 1, continuous and unique, CN/EN paired
         nums = {}
         for sec in sections:
             for item in sec["items"]:
@@ -180,41 +185,41 @@ def parse_md(text: str):
         for num in sorted(nums):
             langs = nums[num]
             if langs.count("CN") != 1 or langs.count("EN") != 1:
-                problems.append(f"[P{num}] 中英未成对：{langs}")
+                problems.append(f"[P{num}] CN/EN not paired: {langs}")
         if nums:
             expect = list(range(1, max(nums) + 1))
             if sorted(nums) != expect:
                 missing = sorted(set(expect) - set(nums))
-                problems.append(f"编号不连续，缺失：{missing}")
+                problems.append(f"numbering is not continuous; missing: {missing}")
     else:
-        # 模式 B 校验：先 CN 后 EN、严格交替、偶数成对
+        # mode B validation: CN first, then EN, strictly alternating, even pairs
         for sec in sections:
             paras = [it for it in sec["items"] if it["kind"] == "para"]
             for idx, it in enumerate(paras):
                 want = "CN" if idx % 2 == 0 else "EN"
                 if it["lang"] != want:
                     problems.append(
-                        f"节 {sec['number']} 第 {idx + 1} 段应为 {want}，实际 {it['lang']}（须中英交替）")
+                        f"section {sec['number']} paragraph {idx + 1} should be {want}, found {it['lang']} (CN/EN must alternate)")
             if len(paras) % 2:
-                problems.append(f"节 {sec['number']} 段落数为奇数（{len(paras)}），中英未成对")
+                problems.append(f"section {sec['number']} has an odd number of paragraphs ({len(paras)}); CN/EN not paired")
     for sec in sections:
         if not any(item["kind"] == "para" for item in sec["items"]):
-            problems.append(f"节 {sec['number']}. {sec['en']} 下没有任何段落")
+            problems.append(f"section {sec['number']}. {sec['en']} has no paragraphs")
     return sections, problems, marked
 
 
 def build_tex(sections, generated_line: str) -> str:
-    """由英文章节/小节/段落/图构建完整 tex。generated_line 为空时省略时间戳（供 --check 比对）。"""
+    """Build the complete tex from the English sections/subsections/paragraphs/figures. An empty generated_line omits the timestamp (for --check comparison)."""
     head = [
         "%% ============================================================================",
-        "%% AUTOMATICALLY GENERATED — DO NOT EDIT MANUALLY / 本文件由脚本自动生成，请勿手改",
-        "%% Source  : docs/submission/report_final/report_final.md  (仅提取英文段落)",
+        "%% AUTOMATICALLY GENERATED — DO NOT EDIT MANUALLY / this file is auto-generated by script; do not edit by hand",
+        "%% Source  : docs/submission/report_final/report_final.md  (English paragraphs only)",
         "%% Rebuild : python -X utf8 scripts/sync_report_draft_v3.py",
     ]
     if generated_line:
         head.append(f"%% {generated_line}")
     head += [
-        "%% Match   : 每段前 %% [Pn] 注释为按出现顺序派生的配对编号（无标记模式）",
+        "%% Match   : the %% [Pn] comment before each paragraph is the pair number derived from the order of appearance (untagged mode)",
         "%% Compile : pdflatex report_draft.tex  (run twice; TeX Live / MiKTeX)",
         "%% ============================================================================",
         r"\documentclass[11pt,a4paper]{article}",
@@ -261,7 +266,7 @@ def build_tex(sections, generated_line: str) -> str:
 
 
 def _opt(name: str, default: Path, args) -> Path:
-    """读取 `--name VALUE` 形式的可选路径参数。"""
+    """Read an optional path argument of the form `--name VALUE`."""
     if name in args:
         i = args.index(name)
         if i + 1 < len(args):
@@ -282,9 +287,9 @@ def main() -> int:
     en_total = sum(1 for s in sections for i in s["items"]
                    if i["kind"] == "para" and i["lang"] == "EN")
     fig_total = sum(1 for s in sections for i in s["items"] if i["kind"] == "fig")
-    print(f"[sync_v3] 解析：{len(sections)} 节 / {para_total} 段 / 英文 {en_total} 段 / 图 {fig_total}（{'标记模式' if marked else '无标记模式'}）")
+    print(f"[sync_v3] parsed: {len(sections)} sections / {para_total} paragraphs / {en_total} English / {fig_total} figures ({'tagged mode' if marked else 'untagged mode'})")
 
-    # 未映射的非 ASCII 警告（不影响生成，仅提示）
+    # warning for unmapped non-ASCII characters (advisory only; does not affect generation)
     unmapped = set()
     for sec in sections:
         for item in sec["items"]:
@@ -294,50 +299,50 @@ def main() -> int:
                 if ord(ch) > 0x24F and ch not in UNICODE_MAP:
                     unmapped.add(ch)
     if unmapped:
-        print(f"[sync_v3] 警告：tex 中保留的未映射非 ASCII 字符 {sorted(unmapped)}")
+        print(f"[sync_v3] warning: unmapped non-ASCII characters kept in the tex: {sorted(unmapped)}")
 
-    # 图片路径存在性检查（相对 md 所在目录解析）
+    # figure-path existence check (resolved relative to the md file's directory)
     for sec in sections:
         for item in sec["items"]:
             if item["kind"] == "fig":
                 if not (md_path.parent / item["path"]).exists():
-                    problems.append(f"图片不存在：{item['path']}")
+                    problems.append(f"figure not found: {item['path']}")
 
     if problems:
-        print("[sync_v3] 结构错误：")
+        print("[sync_v3] structural errors:")
         for item in problems:
             print("  -", item)
         return 2
 
     generated = datetime.now().strftime("Generated: %Y-%m-%d %H:%M")
-    expected_tex = build_tex(sections, generated_line="")  # 比对用（无时间戳）
+    expected_tex = build_tex(sections, generated_line="")  # for comparison (no timestamp)
     write_tex = build_tex(sections, generated_line=generated)
 
     if check_only:
         if not tex_path.exists():
-            print(f"[sync_v3] tex 不存在：{tex_path}")
+            print(f"[sync_v3] tex does not exist: {tex_path}")
             return 1
         actual = tex_path.read_text(encoding="utf-8").replace("\r\n", "\n")
         actual = "\n".join(
             ln for ln in actual.split("\n") if not ln.startswith("%% Generated:")
         )
         if actual.rstrip() != expected_tex.rstrip():
-            print("[sync_v3] 不一致：tex 与 md 英文部分存在差异（tex 可能被手改或未同步）")
+            print("[sync_v3] mismatch: the tex differs from the English part of the md (the tex may have been edited by hand or not synced)")
             a = actual.rstrip().split("\n")
             e = expected_tex.rstrip().split("\n")
             for i in range(max(len(a), len(e))):
-                la = a[i] if i < len(a) else "<无>"
-                le = e[i] if i < len(e) else "<无>"
+                la = a[i] if i < len(a) else "<none>"
+                le = e[i] if i < len(e) else "<none>"
                 if la != le:
-                    print(f"  首个差异（第 {i + 1} 行）:\n    tex : {la}\n    md  : {le}")
+                    print(f"  first difference (line {i + 1}):\n    tex : {la}\n    md  : {le}")
                     break
             return 1
-        print("[sync_v3] 一致：tex 与 md 英文部分完全对应")
+        print("[sync_v3] in sync: the tex matches the English part of the md exactly")
         return 0
 
     tex_path.write_text(write_tex, encoding="utf-8", newline="\n")
-    print(f"[sync_v3] 已生成 {tex_path}（{len(write_tex.splitlines())} 行，{generated}）")
-    print("[sync_v3] 提示：运行 --check 可随时校验一致性")
+    print(f"[sync_v3] generated {tex_path} ({len(write_tex.splitlines())} lines, {generated})")
+    print("[sync_v3] tip: run --check at any time to verify consistency")
     return 0
 
 

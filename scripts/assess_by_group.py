@@ -1,4 +1,4 @@
-"""步骤2补：分 reason/task 的 judge-acc 与错误行清单（读 sidecar）。"""
+"""Step-2 supplement: judge-acc broken down by reason/task plus the list of error rows (reads the sidecar)."""
 import csv, os, sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -43,7 +43,7 @@ for col in ("judge_local", "judge_api_deepseek"):
         sub = [r for r in rows if r["task"] == t]
         m = agree_acc(sub, col)
         print(f"  task   {t:14s} n={m[0] if m else 0:3d} acc={m[1]:.3f}" if m else f"  task {t}: -")
-    # 错误行清单
+    # list of error rows
     errs = [(r, human_val(r), judge_val(r, col)) for r in rows
             if human_val(r) is not None and judge_val(r, col) is not None
             and human_val(r) != judge_val(r, col)]

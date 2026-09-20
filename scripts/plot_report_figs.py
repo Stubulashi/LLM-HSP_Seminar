@@ -1,11 +1,11 @@
-"""报告专用图版（英文标签、A4 单栏尺寸，与 plot_judge.py 同口径）。
+"""Report-specific figure set (English labels, single-column A4 size, same convention as plot_judge.py).
 
-数据源：cloud_backup/results/processed_judge/accuracy.csv
-        cloud_backup/results/processed_judge_condB/accuracy.csv
-产物（docs/submission/figs/）：
-  report_fig_acc_by_model_task.png   模型×任务 judge-acc（单栏宽 6.5in、字号 9pt 级）
-  report_fig_condb.png               Condition B vs A（DeepSeek 7B/14B/32B × 任务）
-用法： python -X utf8 scripts/plot_report_figs.py
+Data sources: cloud_backup/results/processed_judge/accuracy.csv
+              cloud_backup/results/processed_judge_condB/accuracy.csv
+Artifacts (docs/submission/figs/):
+  report_fig_acc_by_model_task.png   model × task judge-acc (single column 6.5in wide, ~9pt fonts)
+  report_fig_condb.png               Condition B vs A (DeepSeek 7B/14B/32B × task)
+Usage: python -X utf8 scripts/plot_report_figs.py
 """
 import csv
 import os
@@ -57,7 +57,7 @@ def _style():
 
 
 def fig_acc_by_model_task(rows_acc):
-    """模型×任务 judge 准确率分组柱状（条件 A 全量 8 档）。"""
+    """Grouped bars of model × task judge accuracy (Condition A, all eight tiers)."""
     width = 0.26
     fig, ax = plt.subplots(figsize=(6.5, 3.1))
     xs = range(len(MODELS))
@@ -78,7 +78,7 @@ def fig_acc_by_model_task(rows_acc):
 
 
 def fig_condb(rows_a, rows_b):
-    """Condition B（显式推理提示）vs A，DeepSeek 7B/14B/32B × 任务。"""
+    """Condition B (explicit reasoning hint) vs A, DeepSeek 7B/14B/32B × task."""
     labels, a_vals, b_vals = [], [], []
     for m in DS_MODELS:
         for t in TASKS:

@@ -1,10 +1,10 @@
-"""judge 口径可视化（英文标签避免中文字体缺失）。
+"""Judge-based visualisation (English labels to avoid missing CJK fonts).
 
-产物（results/processed_judge/figs/）：
-  fig_acc_by_model_task.png     模型×任务 judge-acc 分组柱状
-  fig_emergence_hist.png        emergence 首达 step 分布（按任务）
-  fig_condb_compare.png         Condition B vs A（judge-acc，DeepSeek 7B/14B）
-用法： python -X utf8 scripts/plot_judge.py
+Artifacts (results/processed_judge/figs/):
+  fig_acc_by_model_task.png     grouped bars of model × task judge-acc
+  fig_emergence_hist.png        distribution of the first-equivalent step (by task)
+  fig_condb_compare.png         Condition B vs A (judge-acc, DeepSeek 7B/14B)
+Usage: python -X utf8 scripts/plot_judge.py
 """
 import csv, os, sys
 
@@ -38,7 +38,7 @@ def main() -> int:
     acc_rows = _load(os.path.join(PJ, "accuracy.csv"))
     emg_rows = _load(os.path.join(PJ, "emergence.csv"))
 
-    # 1) acc by model×task
+    # 1) acc by model × task
     x = range(len(MODELS))
     width = 0.25
     fig, ax = plt.subplots(figsize=(12, 5))

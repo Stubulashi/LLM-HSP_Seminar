@@ -1,11 +1,11 @@
-"""分析处理管线（pipeline.md 十一节 / scaf.md 10-12 节，裁决 C12 产物映射）。
+"""Analysis pipeline (pipeline.md section 11 / scaf.md sections 10-12; artifact mapping from ruling C12).
 
-run_analysis：
-1. 读取 results/raw/{model}/{task}/{story_id}/run{N}.json（JSONL）
-2. 回填 confidence（raw → processed，scaf.md Principle 3）
-3. 计算指标：accuracy / emergence / stability / trajectory_similarity
-4. 产出 results/processed/：accuracy.csv、emergence.csv、trajectory_similarity.csv、
-   confidence_curve.png、emergence_distribution.png、trajectory.png、statistics.txt
+run_analysis:
+1. read results/raw/{model}/{task}/{story_id}/run{N}.json (JSONL)
+2. backfill confidence (raw → processed; scaf.md Principle 3)
+3. compute metrics: accuracy / emergence / stability / trajectory_similarity
+4. write results/processed/: accuracy.csv, emergence.csv, trajectory_similarity.csv,
+   confidence_curve.png, emergence_distribution.png, trajectory.png, statistics.txt
 """
 
 from __future__ import annotations
@@ -27,12 +27,13 @@ from visualization import plots
 REQUIRED_COLS = ("model", "task", "story_id", "step", "response", "repetition")
 
 
-# 任务的 authoritative 来源是标注文件的 task 字段（裁决 C7/C11）。历史 run 可能因
-# 中途改标注/错分组，把某个 story 的 run 落到了与当前标注 task 不一致的目录下，
-# 导致 accuracy/emergence 聚合污染（实测：sfp011-sfp020 曾落入 false_belief）。
-# analyze 应信任标注真值过滤掉此类行，避免跨任务污染；本函数仅过滤，不改动 raw 文件。
+# The authoritative source of a task is the task field of the annotation file (rulings C7/C11).
+# Historical runs may have landed a story's run in a directory inconsistent with its current
+# annotation task (mid-way annotation edits or mis-grouping), polluting the accuracy/emergence
+# aggregates (measured: sfp011-sfp020 once fell into false_belief). analyze should trust the
+# annotation truth and filter such rows out; this function only filters and never edits raw files.
 def _resolve_task(data_manager, story_id: str) -> str | None:
-    """返回 story 当前标注的 task；标注缺失时返回 None（交由调用方决定）。"""
+    """Return the task of the story's current annotation; None when the annotation is missing (the caller decides what to do)."""
     try:
         return data_manager.load_annotation(story_id)["task"]
     except Exception:
@@ -40,10 +41,10 @@ def _resolve_task(data_manager, story_id: str) -> str | None:
 
 
 def _filter_task_drift(records: list[dict], data_manager, logger=None) -> list[dict]:
-    """剔除 run 记录 task 与当前标注 task 不一致的行（脏路由），并记告警。
+    """Drop run rows whose task does not match their current annotation task (dirty routing) and log a warning.
 
-    标注缺失的记录保留（旧 analyze 行为：交由 load_annotation 抛错或正常处理），
-    仅丢弃能确证冲突的行。
+    Rows with a missing annotation are kept (old analyze behaviour: either load_annotation raises or they pass through);
+    only rows with a proven conflict are discarded.
     """
     ok: list[dict] = []
     dropped = 0
@@ -60,7 +61,7 @@ def _filter_task_drift(records: list[dict], data_manager, logger=None) -> list[d
 
 
 def load_records(results_dir: str | Path) -> list[dict]:
-    """遍历 results/raw 下全部 JSONL run 文件。"""
+    """Walk every JSONL run file under results/raw."""
     raw_dir = Path(results_dir) / "raw"
     if not raw_dir.exists():
         return []
@@ -82,14 +83,16 @@ def _group(records: list[dict], keys: tuple[str, ...]) -> dict[tuple, list[dict]
 def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
                  allow_models: set[str] | None = None, embedder=None,
                  judge_fn=None) -> dict:
-    """执行完整分析；返回产物路径映射。
+    """Run the full analysis; returns a mapping of output paths.
 
-    allow_models：若给定，仅保留属于该模型名集合的 run 记录（用于 CLI 排除 mock/
-    杂散模型，避免把测试夹具混入科研口径；None 表示不作模型过滤，供单测直接用 mock）。
-    embedder：若给定（如确定性 HashEmbedder），注入 EmbeddingService，使单元/回归
-    测试无需联网下载 HF 编码器；None 表示用 config 指定的 embeddings 编码器（科研口径）。
-    judge_fn：scoring.method 为 local_judge/api_judge 时必需；签名 judge_fn(question, answer_norm, gold)
-    -> True/False/None。默认 None 即走 embedding_similarity（余弦）。
+    allow_models: when given, keep only run records whose model is in the set (the CLI uses this
+    to exclude mock/stray models so test fixtures never mix into the research protocol; None skips
+    model filtering, which lets unit tests use mock models directly).
+    embedder: when given (e.g. the deterministic HashEmbedder), it is injected into EmbeddingService
+    so unit/regression tests need no network to download the HF encoder; None uses the encoder
+    named in the config (research protocol).
+    judge_fn: required when scoring.method is local_judge/api_judge; signature judge_fn(question, answer_norm, gold)
+    -> True/False/None. The default None goes through embedding_similarity (cosine).
     """
     from config.config_manager import ConfigManager
 
@@ -99,8 +102,8 @@ def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
     use_judge = method in ("local_judge", "api_judge")
     if use_judge and judge_fn is None:
         raise RuntimeError(
-            f"scoring.method={method} 需要 judge_fn；请装配 LLMEquivalenceJudge 后传入，"
-            f"或把 experiment.yaml scoring.method 改回 embedding_similarity。"
+            f"scoring.method={method} requires judge_fn; wire in LLMEquivalenceJudge and pass it, "
+            f"or set scoring.method back to embedding_similarity in experiment.yaml."
         )
     service = EmbeddingService(scoring["embedding_model"],
                                 cache_dir=str(Path(results_dir) / "embeddings"),
@@ -111,14 +114,14 @@ def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
     if not records:
         raise RuntimeError(f"no raw results found under {results_dir}/raw")
 
-    # 任务漂移过滤（裁决 C11 权威 task 在标注文件；run 的 task 目录不一致时剔除）
+    # task-drift filter (ruling C11: the authoritative task lives in the annotation file; rows whose run directory disagrees are dropped)
     records = _filter_task_drift(records, data_manager, logger=logger)
     if allow_models is not None:
         kept = [r for r in records if r.get("model") in allow_models]
         dropped = len(records) - len(kept)
         if dropped and logger is not None:
             logger.warning(f"analysis dropped {dropped} records from models not in "
-                           f"allow_models (mock/杂散): {sorted({r.get('model') for r in records} - allow_models)}")
+                           f"allow_models (mock/stray): {sorted({r.get('model') for r in records} - allow_models)}")
         records = kept
     if not records:
         raise RuntimeError(
@@ -126,20 +129,20 @@ def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
             f"(task-drift or allow_models); nothing to analyze"
         )
 
-    # 1. 回填 confidence（processed 层）
+    # 1. backfill confidence (processed layer)
     for rec in records:
         rec["confidence"] = extract_confidence(rec["response"])
 
     processed_dir = Path(results_dir) / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. 指标计算（model × task × story × repetition）
+    # 2. metric computation (model × task × story × repetition)
     acc_rows, emg_rows, stb_rows = [], [], []
     stability_by_model: dict[str, list[tuple[int, float]]] = {}
     for key, group in _group(records, ("model", "task", "story_id", "repetition")).items():
         model, task, story_id, repetition = key
         ann = data_manager.load_annotation(story_id)
-        # gold 优先取多参考关键点 gold_points（P1-4），缺失回退单条 gold_answer
+        # prefer the multi-reference gold_points (P1-4); fall back to the single gold_answer when absent
         gold = ann.get("gold_points") or ann.get("gold_answer")
         if not gold:
             raise KeyError(f"annotation {story_id} has no gold_answer/gold_points")
@@ -163,12 +166,12 @@ def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
     emg_df = pd.DataFrame(emg_rows)
     stb_df = pd.DataFrame(stb_rows)
 
-    # 3. 产物（裁决 C12）
+    # 3. artifacts (ruling C12)
     acc_df.to_csv(processed_dir / "accuracy.csv", index=False)
     emg_df.to_csv(processed_dir / "emergence.csv", index=False)
     stb_df.to_csv(processed_dir / "trajectory_similarity.csv", index=False)
 
-    # confidence 曲线数据
+    # confidence curve data
     conf_rows = [
         {"model": r["model"], "story_id": r["story_id"], "repetition": r["repetition"],
          "sentence_position": r["step"], "confidence": r["confidence"]}
@@ -188,7 +191,7 @@ def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
             stability_by_model, processed_dir / "trajectory.png"),
     }
 
-    # 4. 跨模型轨迹相似度（proj.md Metric 5）
+    # 4. cross-model trajectory similarity (proj.md metric 5)
     ts_rows = []
     models = sorted({r["model"] for r in records})
     if len(models) >= 2:
@@ -197,15 +200,15 @@ def run_analysis(results_dir: str | Path, data_manager, config, logger=None,
             for mb in models[i + 1:]:
                 sim = trajectory_similarity(by_model[ma], by_model[mb], service)
                 ts_rows.append({"model_a": ma, "model_b": mb, "similarity": sim})
-        # 修复：跨模型表单独落盘，避免覆盖上面的 per-run stability 表（trajectory_similarity.csv）
+        # fix: keep the cross-model table in its own file so it does not overwrite the per-run stability table above (trajectory_similarity.csv)
         ts_path = processed_dir / "trajectory_similarity_models.csv"
         pd.DataFrame(ts_rows).to_csv(ts_path, index=False)
         outputs["trajectory_similarity_models.csv"] = ts_path
 
-    # 5. 统计（数据充足且 statsmodels 可用时）
+    # 5. statistics (when there is enough data and statsmodels is available)
     metrics = acc_df.merge(emg_df, on=["model", "task", "story_id", "repetition"], how="left")
     metrics = metrics.merge(stb_df, on=["model", "task", "story_id", "repetition"], how="left")
-    # size 来自 models.yaml（裁决 C14）；测试用 mock 模型等未知键容忍为空
+    # size comes from models.yaml (ruling C14); unknown keys such as test mock models are tolerated as empty
     model_sizes = {}
     for m in metrics["model"].unique():
         try:

@@ -1,17 +1,19 @@
-"""report_draft_v2.md（中英对照）→ report_draft_v2.tex（仅英文）同步与校验工具。
+"""report_draft_v2.md (bilingual CN/EN) → report_draft_v2.tex (English only) sync and check tool.
 
-与 v1（scripts/sync_report_draft.py）的差异：
-  1) 路径改为 docs/submission/report_draft_v2/（v1 文件保持不动）；
-  2) 支持 `### N.M English / 中文` 小节标题（tex 输出 \\subsection*）；
-  3) 支持 md 图片行 `![caption](figs/xxx.png)`：tex 输出 figure 环境（含 caption、relative 路径）；
-  4) 其余规则与 v1 一致：仅提取 **[Pn-EN]** 段落进入 tex；编号连续唯一、中英成对、
-     tex 与 md 英文逐段一致，否则报错并给出差异。
+Differences from v1 (scripts/sync_report_draft.py):
+  1) paths moved to docs/submission/report_draft_v2/ (the v1 files stay untouched);
+  2) supports `### N.M English / <Chinese title>` subsection headings (tex output \\subsection*);
+  3) supports md image lines `![caption](figs/xxx.png)`: the tex output uses figure environments (with caption and relative path);
+  4) all other rules match v1: only **[Pn-EN]** paragraphs enter the tex; numbers are continuous and
+     unique, CN/EN are paired, and the tex agrees paragraph by paragraph with the md English part;
+     otherwise an error is raised with the differences.
 
-同步规则：tex 为生成物（勿手改），每次运行脚本即与 md 英文部分完全一致。
+Sync rule: the tex file is a generated artifact (never edit by hand); every run makes it match
+the English part of the md exactly.
 
-用法：
-  python -X utf8 scripts/sync_report_draft_v2.py           # 校验结构并重新生成 tex
-  python -X utf8 scripts/sync_report_draft_v2.py --check   # 仅校验（不写文件），不一致返回非 0
+Usage:
+  python -X utf8 scripts/sync_report_draft_v2.py           # validate structure and regenerate the tex
+  python -X utf8 scripts/sync_report_draft_v2.py --check   # check only (no writes); non-zero exit on mismatch
 """
 import re
 import sys
@@ -26,7 +28,7 @@ SUB_RE = re.compile(r"^###\s+([\d.]+)\s+(.+?)\s*/\s*(.+?)\s*$")
 PAR_RE = re.compile(r"^\*\*\[P(\d+)-(CN|EN)\]\*\*\s*(.*)$")
 IMG_RE = re.compile(r"^!\[(.*)\]\((.+)\)$")
 
-# 常用 Unicode → LaTeX 映射（先转义后映射；映射引入的 $ { } 为安全代码）
+# common Unicode → LaTeX mapping (escape first, then map; the $ { } introduced by the mapping are safe code)
 UNICODE_MAP = {
     "κ": r"$\kappa$", "Δ": r"$\Delta$", "δ": r"$\delta$", "λ": r"$\lambda$",
     "≤": r"$\leq$", "≥": r"$\geq$", "≈": r"$\approx$", "×": r"$\times$",
@@ -40,7 +42,7 @@ ESC_CHARS = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$",
 
 
 def latex_escape(text: str) -> str:
-    """单遍字符级转义（避免二次转义），再应用 Unicode 映射。"""
+    """Single character-level escape pass (avoids double escaping), then the Unicode mapping."""
     out = []
     for ch in text:
         if ch in ESC_CHARS:
@@ -54,7 +56,7 @@ def latex_escape(text: str) -> str:
 
 
 def parse_md(text: str):
-    """解析 md → (sections, problems)；sections 为有序列表，items 保持出现顺序。"""
+    """Parse md → (sections, problems); sections is an ordered list and items keep their order of appearance."""
     sections = []
     problems = []
     cur = None
@@ -67,7 +69,7 @@ def parse_md(text: str):
         num, lang, lines = pending
         body = " ".join(seg.strip() for seg in lines if seg.strip())
         if not body:
-            problems.append(f"[P{num}-{lang}] 段落内容为空")
+            problems.append(f"[P{num}-{lang}] paragraph body is empty")
         cur["items"].append({"kind": "para", "num": num, "lang": lang, "text": body})
         pending = None
 
@@ -84,21 +86,21 @@ def parse_md(text: str):
         elif m_sub:
             flush_para()
             if cur is None:
-                problems.append(f"[{m_sub.group(1)}] 小节出现在任何节标题之前")
+                problems.append(f"[{m_sub.group(1)}] subsection appears before any section heading")
                 continue
             cur["items"].append({"kind": "sub", "number": m_sub.group(1),
                                  "en": m_sub.group(2).strip(), "cn": m_sub.group(3).strip()})
         elif m_par:
             flush_para()
             if cur is None:
-                problems.append(f"[P{m_par.group(1)}-{m_par.group(2)}] 出现在任何节标题之前")
+                problems.append(f"[P{m_par.group(1)}-{m_par.group(2)}] appears before any section heading")
                 cur = {"number": "?", "en": "(no section)", "cn": "", "items": []}
                 sections.append(cur)
             pending = (int(m_par.group(1)), m_par.group(2), [m_par.group(3)])
         elif m_img:
             flush_para()
             if cur is None:
-                problems.append(f"[IMG] {m_img.group(2)} 出现在任何节标题之前")
+                problems.append(f"[IMG] {m_img.group(2)} appears before any section heading")
                 continue
             cur["items"].append({"kind": "fig", "alt": m_img.group(1).strip(),
                                  "path": m_img.group(2).strip()})
@@ -106,7 +108,7 @@ def parse_md(text: str):
             pending[2].append(line)
     flush_para()
 
-    # 结构校验：编号连续唯一、中英成对
+    # structural validation: numbers continuous and unique, CN/EN paired
     nums = {}
     for sec in sections:
         for item in sec["items"]:
@@ -115,30 +117,30 @@ def parse_md(text: str):
     for num in sorted(nums):
         langs = nums[num]
         if langs.count("CN") != 1 or langs.count("EN") != 1:
-            problems.append(f"[P{num}] 中英未成对：{langs}")
+            problems.append(f"[P{num}] CN/EN not paired: {langs}")
     if nums:
         expect = list(range(1, max(nums) + 1))
         if sorted(nums) != expect:
             missing = sorted(set(expect) - set(nums))
-            problems.append(f"编号不连续，缺失：{missing}")
+            problems.append(f"numbering is not continuous; missing: {missing}")
     for sec in sections:
         if not any(item["kind"] == "para" for item in sec["items"]):
-            problems.append(f"节 {sec['number']}. {sec['en']} 下没有任何段落")
+            problems.append(f"section {sec['number']}. {sec['en']} has no paragraphs")
     return sections, problems
 
 
 def build_tex(sections, generated_line: str) -> str:
-    """由英文章节/小节/段落/图构建完整 tex。generated_line 为空时省略时间戳（供 --check 比对）。"""
+    """Build the complete tex from the English sections/subsections/paragraphs/figures. An empty generated_line omits the timestamp (for --check comparison)."""
     head = [
         "%% ============================================================================",
-        "%% AUTOMATICALLY GENERATED — DO NOT EDIT MANUALLY / 本文件由脚本自动生成，请勿手改",
-        "%% Source  : docs/submission/report_draft_v2/report_draft.md  (仅提取 [Pn-EN] 英文段落)",
+        "%% AUTOMATICALLY GENERATED — DO NOT EDIT MANUALLY / this file is auto-generated by script; do not edit by hand",
+        "%% Source  : docs/submission/report_draft_v2/report_draft.md  ([Pn-EN] English paragraphs only)",
         "%% Rebuild : python -X utf8 scripts/sync_report_draft_v2.py",
     ]
     if generated_line:
         head.append(f"%% {generated_line}")
     head += [
-        "%% Match   : 每段前 %% [Pn] 注释即该段在 report_draft_v2.md 中的编号",
+        "%% Match   : the %% [Pn] comment before each paragraph is its number in report_draft_v2.md",
         "%% Compile : pdflatex report_draft.tex  (run twice; TeX Live / MiKTeX)",
         "%% ============================================================================",
         r"\documentclass[11pt,a4paper]{article}",
@@ -189,9 +191,9 @@ def main() -> int:
     en_total = sum(1 for s in sections for i in s["items"]
                    if i["kind"] == "para" and i["lang"] == "EN")
     fig_total = sum(1 for s in sections for i in s["items"] if i["kind"] == "fig")
-    print(f"[sync_v2] 解析：{len(sections)} 节 / {para_total} 段 / 英文 {en_total} 段 / 图 {fig_total}")
+    print(f"[sync_v2] parsed: {len(sections)} sections / {para_total} paragraphs / {en_total} English / fig {fig_total}")
 
-    # 未映射的非 ASCII 警告（不影响生成，仅提示）
+    # warning for unmapped non-ASCII characters (advisory only; does not affect generation)
     unmapped = set()
     for sec in sections:
         for item in sec["items"]:
@@ -201,50 +203,50 @@ def main() -> int:
                 if ord(ch) > 0x24F and ch not in UNICODE_MAP:
                     unmapped.add(ch)
     if unmapped:
-        print(f"[sync_v2] 警告：tex 中保留的未映射非 ASCII 字符 {sorted(unmapped)}")
+        print(f"[sync_v2] warning: unmapped non-ASCII characters kept in the tex: {sorted(unmapped)}")
 
-    # 图片路径存在性检查（相对本目录解析）
+    # figure-path existence check (resolved relative to this directory)
     for sec in sections:
         for item in sec["items"]:
             if item["kind"] == "fig":
                 if not (MD_PATH.parent / item["path"]).exists():
-                    problems.append(f"图片不存在：{item['path']}")
+                    problems.append(f"figure not found: {item['path']}")
 
     if problems:
-        print("[sync_v2] 结构错误：")
+        print("[sync_v2] structural errors:")
         for item in problems:
             print("  -", item)
         return 2
 
     generated = datetime.now().strftime("Generated: %Y-%m-%d %H:%M")
-    expected_tex = build_tex(sections, generated_line="")  # 比对用（无时间戳）
+    expected_tex = build_tex(sections, generated_line="")  # for comparison (no timestamp)
     write_tex = build_tex(sections, generated_line=generated)
 
     if check_only:
         if not TEX_PATH.exists():
-            print(f"[sync_v2] tex 不存在：{TEX_PATH}")
+            print(f"[sync_v2] tex does not exist: {TEX_PATH}")
             return 1
         actual = TEX_PATH.read_text(encoding="utf-8").replace("\r\n", "\n")
         actual = "\n".join(
             ln for ln in actual.split("\n") if not ln.startswith("%% Generated:")
         )
         if actual.rstrip() != expected_tex.rstrip():
-            print("[sync_v2] 不一致：tex 与 md 英文部分存在差异（tex 可能被手改或未同步）")
+            print("[sync_v2] mismatch: the tex differs from the English part of the md (the tex may have been edited by hand or not synced)")
             a = actual.rstrip().split("\n")
             e = expected_tex.rstrip().split("\n")
             for i in range(max(len(a), len(e))):
-                la = a[i] if i < len(a) else "<无>"
-                le = e[i] if i < len(e) else "<无>"
+                la = a[i] if i < len(a) else "<none>"
+                le = e[i] if i < len(e) else "<none>"
                 if la != le:
-                    print(f"  首个差异（第 {i + 1} 行）:\n    tex : {la}\n    md  : {le}")
+                    print(f"  first difference (line {i + 1}):\n    tex : {la}\n    md  : {le}")
                     break
             return 1
-        print("[sync_v2] 一致：tex 与 md 英文部分完全对应")
+        print("[sync_v2] in sync: the tex matches the English part of the md exactly")
         return 0
 
     TEX_PATH.write_text(write_tex, encoding="utf-8", newline="\n")
-    print(f"[sync_v2] 已生成 {TEX_PATH}（{len(write_tex.splitlines())} 行，{generated}）")
-    print("[sync_v2] 提示：运行 --check 可随时校验一致性")
+    print(f"[sync_v2] generated {TEX_PATH} ({len(write_tex.splitlines())} lines, {generated})")
+    print("[sync_v2] tip: run --check at any time to verify consistency")
     return 0
 
 

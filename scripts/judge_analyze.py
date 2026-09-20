@@ -1,15 +1,16 @@
-"""并发版 judge 分析器：对全部 runs 做 judge 口径 accuracy（末步）与 emergence（逐 step）。
+"""Concurrent judge analyser: computes judge-based accuracy (last step) and emergence (per step) over all runs.
 
-背景：main.py analyze --scoring-method api_judge 在 pipeline 内串行调用 judge，4200+ 次
-API 判定耗时数小时且无进度日志。本脚本用线程池并发调用 judge（DeepSeek API 线程安全：
-每次调用新建 client），并把产物写到 results/processed_judge/（不覆盖余弦版 processed）。
+Background: main.py analyze --scoring-method api_judge calls the judge serially inside the pipeline;
+4,200+ API decisions take hours and produce no progress log. This script calls the judge concurrently
+with a thread pool (the DeepSeek API is thread-safe: a new client per call) and writes the artifacts
+to results/processed_judge/ (without overwriting the cosine-based processed/).
 
-用法（云端，需 .env 含 DEEPSEEK_API_KEY）：
+Usage (on the cloud; .env must contain DEEPSEEK_API_KEY):
     python -X utf8 scripts/judge_analyze.py --provider deepseek --scope last
-    python -X utf8 scripts/judge_analyze.py --provider deepseek --scope all   # 含逐 step emergence
-产物：
-    results/processed_judge/accuracy.csv     （scope 无关，恒有）
-    results/processed_judge/emergence.csv    （scope=all 才有值；last 时列为空）
+    python -X utf8 scripts/judge_analyze.py --provider deepseek --scope all   # includes per-step emergence
+Artifacts:
+    results/processed_judge/accuracy.csv     (scope-independent; always written)
+    results/processed_judge/emergence.csv    (values only with scope=all; empty columns with last)
 """
 import argparse, csv, json, os, sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -31,9 +32,10 @@ def _group_records(records):
 
 
 def _judge_run(recs, ann, judge_fn, scope: str):
-    """单 run 判定：返回 (acc_label, emg_step)。acc_label True/False/None。
+    """Judge a single run: returns (acc_label, emg_step). acc_label is True/False/None.
 
-    空解释（清洗后无正文）不调 judge：语义上不等价 → False（省 API 且避免空输入误判）。
+    An empty interpretation (no body text after cleaning) skips the judge: semantically not
+    equivalent → False (saves API calls and avoids judging empty input).
     """
     ordered = sorted(recs, key=lambda r: r["step"])
     gold = ann.get("gold_points") or ann.get("gold_answer")
@@ -42,7 +44,7 @@ def _judge_run(recs, ann, judge_fn, scope: str):
     def judge_answer(response: str):
         norm = extract_interpretation(response).strip()
         if not norm:
-            return False  # 无正文 → 不等价
+            return False  # no body text → not equivalent
         return judge_fn(q or "", norm, gold)
 
     last = ordered[-1]
@@ -78,9 +80,10 @@ def _save_cache(path: str, cache: dict) -> None:
 
 
 def _cached_judge_fn(judge_fn, cache: dict, lock: Lock):
-    """包装 judge_fn（返回 bool/None）：以 (question|answer|gold) 哈希为键缓存。
+    """Wrap judge_fn (returning bool/None): cache keyed by the hash of (question|answer|gold).
 
-    命中直接复用；None（无法判定）不写缓存，避免空值污染（重跑会重试）。
+    Hits are reused directly; None (undecidable) is not cached, so polluted empty values cannot
+    appear and a rerun retries them.
     """
     def _jf(q: str, a: str, g: str):
         key = sha1("|{0}|{1}|{2}".format(q, a, g).encode("utf-8")).hexdigest()
@@ -90,11 +93,11 @@ def _cached_judge_fn(judge_fn, cache: dict, lock: Lock):
             return True
         if hit == "0":
             return False
-        # hit 为 ''（旧版污染）或未命中 → 重新调用并覆盖缓存（自愈）
+        # hit is '' (polluted by the old version) or a miss → call again and overwrite the cache (self-healing)
         r = judge_fn(q, a, g)
-        if isinstance(r, dict):  # 兼容误传 judge.judge（返回 {'label':…}）
+        if isinstance(r, dict):  # tolerate judge.judge being passed by mistake (it returns {'label': ...})
             r = r.get("label")
-        # r: bool/None；异常上抛 → 调用方记 err
+        # r is bool/None; exceptions propagate → the caller records err
         if r is not None:
             with lock:
                 cache[key] = "1" if r is True else "0"
@@ -105,9 +108,10 @@ def _cached_judge_fn(judge_fn, cache: dict, lock: Lock):
 def judge_analyze_groups(groups, dm, judge_fn, scope: str,
                          out_dir, max_workers=8, progress_every=50,
                          judge_cache_path=None):
-    """核心：并发判所有 run，写 accuracy.csv / emergence.csv。返回 (runs, errors)。
+    """Core: judge all runs concurrently and write accuracy.csv / emergence.csv. Returns (runs, errors).
 
-    judge_cache_path 给定则启用逐调用缓存：命中直接复用，失败行不写缓存，重跑自动重试。
+    When judge_cache_path is given, a per-call cache is enabled: hits are reused, failed rows are
+    not cached, and a rerun retries them automatically.
     """
     os.makedirs(out_dir, exist_ok=True)
     cache = _load_cache(judge_cache_path)
@@ -164,12 +168,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--provider", default="deepseek", choices=["local", "deepseek", "kimi"])
     ap.add_argument("--scope", default="last", choices=["last", "all"],
-                    help="last=仅末步 accuracy；all=逐 step 判定 emergence（调用量≈全部步数）")
+                    help="last = last-step accuracy only; all = per-step emergence (number of calls ≈ total steps)")
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--retries", type=int, default=6, help="单次调用 API 重试次数（429/5xx 指数退避）")
+    ap.add_argument("--retries", type=int, default=6, help="API retries per call (exponential backoff on 429/5xx)")
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--out-dir", default="results/processed_judge")
-    ap.add_argument("--task-filter", default=None, help="逗号分隔，只跑某任务（试点省钱用）")
+    ap.add_argument("--task-filter", default=None, help="comma-separated; run only some tasks (to save money in a pilot)")
     args = ap.parse_args()
 
     from config.config_manager import ConfigManager
@@ -186,7 +190,7 @@ def main() -> int:
         keep = {t.strip() for t in args.task_filter.split(",") if t.strip()}
         records = [r for r in records if r.get("task") in keep]
     if not records:
-        print("[judge_analyze] 无可用记录")
+        print("[judge_analyze] no usable records")
         return 1
     groups = _group_records(records)
     cache_path = os.path.join(args.out_dir, "judge_cache.jsonl")
@@ -196,7 +200,7 @@ def main() -> int:
     judge = LLMEquivalenceJudge(provider=args.provider, retries=args.retries)
     judge.load()
     try:
-        # judge.judge 返回 dict（含 label/rationale），此处只取 label（bool/None）
+        # judge.judge returns a dict (label/rationale); only label (bool/None) is used here
         judge_fn = lambda q, a, g: judge.judge(q or "", a, g)["label"]
         judge_analyze_groups(groups, dm, judge_fn, args.scope,
                              args.out_dir, max_workers=args.workers,

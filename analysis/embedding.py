@@ -1,8 +1,8 @@
-"""Embedding 服务（pipeline.md 十一.3 L903-937 / scaf.md 11 节，裁决 C10）。
+"""Embedding service (pipeline.md 11.3 L903-937 / scaf.md section 11; ruling C10).
 
-- 主路径：sentence-transformers（C10 初值：all-MiniLM-L6-v2），懒加载
-- 降级路径：HashEmbedder（确定性字符 n-gram 向量，仅测试/冒烟用，标注降级）
-- 缓存：results/embeddings/，以文本 hash 为键（避免数千次重复编码）
+- main path: sentence-transformers (C10 initial value: all-MiniLM-L6-v2), lazily loaded
+- degraded path: HashEmbedder (deterministic character n-gram vectors; tests/smoke only, flagged as degraded)
+- cache: results/embeddings/, keyed by a hash of the text (avoids thousands of repeated encodings)
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ _DIM = 256
 
 
 def _model_cached(model_name: str) -> bool:
-    """该 HF 模型是否已有本地快照（snapshots/*/model.safetensors）。"""
+    """Whether the HF model already has a local snapshot (snapshots/*/model.safetensors)."""
     try:
         from huggingface_hub.constants import HF_HUB_CACHE
 
@@ -29,10 +29,11 @@ def _model_cached(model_name: str) -> bool:
 
 
 def _ensure_local_hf_offline(model_name: str) -> None:
-    """若该句向量模型已在本地 HF 缓存，则置离线环境，使其不再发网络请求。
+    """If the sentence-embedding model is already in the local HF cache, switch to offline mode so no network requests are made.
 
-    sentence-transformers 即使命中缓存也会先做一轮 hub HEAD（adapter_config.json 等）
-    探测；离线数据/评测机上会抛 getaddrinfo/连接失败。已探到本地快照即 HF_HUB_OFFLINE=1。
+    Even on a cache hit, sentence-transformers first performs a hub HEAD probe (adapter_config.json
+    etc.); on offline data/evaluation machines this raises getaddrinfo / connection errors. Once a
+    local snapshot is detected, HF_HUB_OFFLINE=1 is set.
     """
     try:
         import os
@@ -41,11 +42,11 @@ def _ensure_local_hf_offline(model_name: str) -> None:
             os.environ.setdefault("HF_HUB_OFFLINE", "1")
             os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
     except Exception:
-        pass  # 命中异常不阻断，交由降级层处理
+        pass  # exceptions here are not fatal; the degraded layer handles them
 
 
 class HashEmbedder:
-    """确定性降级 embedder：字符 n-gram 哈希向量（非语义，仅链路测试）。"""
+    """Deterministic degraded embedder: character n-gram hash vectors (non-semantic; pipeline tests only)."""
 
     def __init__(self, dim: int = _DIM):
         self.dim = dim
@@ -72,12 +73,12 @@ class EmbeddingService:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._st = None
         self._hash = None
-        self._embedder = embedder  # 测试注入
-        self.degraded = False  # 若 sentence-transformers 不可用则置 True（保/复现可查）
+        self._embedder = embedder  # injectable for tests
+        self.degraded = False  # set to True when sentence-transformers is unavailable (visible in provenance/reproducibility checks)
 
     @staticmethod
     def _pick_device() -> str:
-        """有可用 CUDA 用 cuda，否则 cpu（analyze 大量文本编码时显著提速）。"""
+        """Use cuda when available, otherwise cpu (much faster when analyze encodes large amounts of text)."""
         try:
             import torch
 
@@ -95,8 +96,8 @@ class EmbeddingService:
                 from sentence_transformers import SentenceTransformer
 
                 device = self._pick_device()
-                # 本地有快照则 local_files_only=True，杜绝离线环境对 HF 发 HEAD/GET；
-                # device 自动选择：云端有 GPU 用 GPU 编码（26070 条文本提速数十倍）
+                # with a local snapshot, local_files_only=True prevents any HF HEAD/GET in offline environments;
+                # device is chosen automatically: encode on the GPU when the cloud machine has one (tens of times faster for 26,070 texts)
                 self._st = SentenceTransformer(self.model_name,
                                                local_files_only=local_only,
                                                device=device)
@@ -112,7 +113,7 @@ class EmbeddingService:
         return self._st if self._st is not None else self._hash
 
     def encode(self, texts: list[str]) -> np.ndarray:
-        """批量编码，命中缓存即复用（response 内容 hash 为键）。"""
+        """Batch encoding with cache reuse (keyed by a hash of the response content)."""
         keys = [
             hashlib.sha256(t.encode("utf-8")).hexdigest()[:16] for t in texts
         ]
@@ -147,12 +148,12 @@ class EmbeddingService:
 
 
 def text_hash(text: str) -> str:
-    """文本缓存键。"""
+    """Cache key for a text."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def cache_stats(cache_dir: str = "results/embeddings") -> dict:
-    """缓存统计（性能预检用）。"""
+    """Cache statistics (used by the performance pre-check)."""
     cache_dir = Path(cache_dir)
     if not cache_dir.exists():
         return {"files": 0}

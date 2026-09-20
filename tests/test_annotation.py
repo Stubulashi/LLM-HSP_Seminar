@@ -1,4 +1,4 @@
-"""M2 标注管线单测：parse_json / validator / story_parser / pipeline（含重试）。"""
+"""M2 annotation pipeline unit tests: parse_json / validator / story_parser / pipeline (including retries)."""
 
 import json
 
@@ -59,7 +59,7 @@ def test_validator_rejects_missing_required(field):
 
 def test_validator_rejects_skipped_sentence_id():
     data = json.loads(json.dumps(VALID))
-    data["sentences"][1]["id"] = 3  # 跳号
+    data["sentences"][1]["id"] = 3  # skipped id
     ok, errors = AnnotationValidator().validate(data)
     assert not ok
     assert any("continuous" in e for e in errors)
@@ -102,7 +102,7 @@ def test_split_sentence_three_sentences():
     assert sentences[0] == "Anna bought a handmade sweater for Lisa."
 
 
-# ---------- pipeline（mock 模型全链）----------
+# ---------- pipeline (full chain with a mock model) ----------
 
 class MockAnnotator:
     def __init__(self, response):
@@ -120,7 +120,7 @@ def test_pipeline_annotates_and_saves(tmp_path, monkeypatch):
     story_dir.mkdir()
     (story_dir / "fp001.txt").write_text(RAW_STORY, encoding="utf-8")
 
-    monkeypatch.chdir(tmp_path)  # 隔离 data/ 目录
+    monkeypatch.chdir(tmp_path)  # isolate the data/ directory
 
     from data_manager import DataManager
 
@@ -131,7 +131,7 @@ def test_pipeline_annotates_and_saves(tmp_path, monkeypatch):
     assert [r["id"] for r in results] == ["fp001"]
     assert results[0]["task"] == "faux_pas"
     assert results[0]["reviewed"] is False
-    # 落盘可读
+    # the saved file is readable
     loaded = dm.load_annotation("fp001")
     assert loaded["gold_answer"] == "Lisa unintentionally offended Anna"
 

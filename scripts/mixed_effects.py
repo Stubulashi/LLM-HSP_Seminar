@@ -1,13 +1,13 @@
-"""混合效应模型（MixedLM）显著性检验（只读）。
+"""Mixed-effects model (MixedLM) significance tests (read-only).
 
-读取 results/processed_judge/{accuracy,emergence}.csv + config/models.yaml 的
-size/training，对 judge 口径指标跑两类模型（groups=story_id）：
-  acc01 ~ C(model) + C(task) + C(model):C(task)      （模型×任务差异）
-  acc01 ~ size_centered + C(training) + C(task)      （规模/范式主效应）
-emerged01（emergence 是否有效）同构。
+Reads results/processed_judge/{accuracy,emergence}.csv plus size/training from config/models.yaml
+and fits two model families on the judge-based metrics (groups=story_id):
+  acc01 ~ C(model) + C(task) + C(model):C(task)      (model × task differences)
+  acc01 ~ size_centered + C(training) + C(task)      (size / paradigm main effects)
+emerged01 (whether emergence is valid) is analogous.
 
-用法： python -X utf8 scripts/mixed_effects.py
-输出：各模型摘要表（含 p 值）到 stdout。
+Usage: python -X utf8 scripts/mixed_effects.py
+Output: per-model summary tables (with p-values) on stdout.
 """
 import csv, os, re, sys
 
@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import statsmodels.formula.api as smf
 except ImportError:
-    print("[mixed_effects] statsmodels 未安装：pip install statsmodels 后重跑")
+    print("[mixed_effects] statsmodels is not installed: run pip install statsmodels and retry")
     sys.exit(1)
 
 from config.config_manager import ConfigManager
@@ -60,9 +60,9 @@ def _fit(df, formula, y):
     try:
         md = smf.mixedlm(formula, df, groups=df["story_id"])
         mf = md.fit(reml=False, maxiter=1000)
-        print(mf.summary())  # 兼容 statsmodels 0.14+/1.x 的 summary 结构
+        print(mf.summary())  # works with the summary structure of statsmodels 0.14+/1.x
         print(f"[mixed_effects] converged={mf.converged} llf={mf.llf:.1f}")
-    except Exception as exc:  # noqa: BLE001 - 收敛/奇异等输出诊断
+    except Exception as exc:  # noqa: BLE001 - print diagnostics for convergence/singularity etc.
         print(f"[mixed_effects] fit failed: {type(exc).__name__}: {str(exc)[:300]}")
 
 
@@ -71,7 +71,7 @@ def main() -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default="qwen7b,deepseek7b,qwen14b,deepseek14b,deepseek32b",
-                    help="逗号分隔模型名（默认正式 5 模型；对照/扩展模型不入统计）")
+                    help="comma-separated model names (default: the official five; comparison/extension models stay out of the statistics)")
     args = ap.parse_args()
     keep = {m.strip() for m in args.models.split(",") if m.strip()}
     rows = _load()

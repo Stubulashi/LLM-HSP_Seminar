@@ -1,12 +1,11 @@
-"""Confidence 曲线与逐 step 建模（proj.md 统计计划：Confidence ~ Position × Model + Task）。
+"""Confidence curves and per-step modelling (proj.md statistics plan: Confidence ~ Position × Model + Task).
 
-读取 results/raw/<model>/<task>/<story>/run*.json（每步 record.response 内置信自报），
-join results/processed_judge/accuracy.csv（末步判定）：
-  1) 每模型置信按句子位置四分位（Q1-Q4）均值表；
-  2) MixedLM：conf ~ pos_frac + C(model) + C(task)（groups=story_id；statsmodels 缺失则跳过）；
-产物：
-  results/processed_judge/confidence_by_position.csv （模型×四分位均值）
-用法： python -X utf8 scripts/confidence_analysis.py --models qwen7b,deepseek7b,qwen14b,deepseek14b,deepseek32b,qwen32b
+Reads results/raw/<model>/<task>/<story>/run*.json (the confidence self-report inside each record.response) and joins results/processed_judge/accuracy.csv (last-step decision):
+  1) per-model confidence means by sentence-position quartile (Q1-Q4);
+  2) MixedLM: conf ~ pos_frac + C(model) + C(task) (groups=story_id; skipped when statsmodels is missing);
+Artifacts:
+  results/processed_judge/confidence_by_position.csv (model × quartile means)
+Usage: python -X utf8 scripts/confidence_analysis.py --models qwen7b,deepseek7b,qwen14b,deepseek14b,deepseek32b,qwen32b
 """
 import argparse, csv, glob, json, os, statistics, sys
 
@@ -55,11 +54,11 @@ def main() -> int:
             rows.append({"model": model, "task": task, "story_id": story,
                          "step": r["step"], "pos_frac": r["step"] / ns, "conf": c})
     if not rows:
-        print("[confidence] 无可用记录")
+        print("[confidence] no usable records")
         return 1
     print(f"[confidence] records={len(rows)} models={sorted({r['model'] for r in rows})}")
 
-    # 1) 位置四分位均值（按模型）
+    # 1) position-quartile means (per model)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     buckets = {m: {q: [] for q in ("Q1", "Q2", "Q3", "Q4")} for m in sorted(keep)}
     for r in rows:
@@ -76,7 +75,7 @@ def main() -> int:
             w.writerow([m] + vals + [n])
             print(f"{m:12} {vals[0]:6.1f} {vals[1]:6.1f} {vals[2]:6.1f} {vals[3]:6.1f} {n:6d}")
 
-    # 2) MixedLM（可选依赖）
+    # 2) MixedLM (optional dependency)
     try:
         import pandas as pd
         import statsmodels.formula.api as smf
@@ -93,7 +92,7 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 print(f"fit failed: {type(exc).__name__}: {str(exc)[:200]}")
     except ImportError:
-        print("[confidence] statsmodels/pandas 缺失，跳过 MixedLM（表格已产出）")
+        print("[confidence] statsmodels/pandas missing; skipping MixedLM (the table has been written)")
     return 0
 
 

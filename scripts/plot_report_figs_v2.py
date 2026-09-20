@@ -1,22 +1,22 @@
-"""报告草稿包 v2：图版生成（3 张新图 + 2 张复用图复制）。
+"""Report draft package v2: figure generation (3 new figures + 2 reused copies).
 
-输入：
-  cloud_backup/results/processed_judge/accuracy.csv                     （已由 build_report_tables_v2.py 聚合）
-  docs/submission/report_draft_v2/tables/table1_acc_ci.csv              （图 1 数据：模型×任务 acc + 95% CI）
-  cloud_backup/results/processed/transition_stats.csv                   （图 2 数据：回退/恢复）
-  cloud_backup/results/processed_judge/confidence_by_position.csv       （图 3 数据：CondA 置信）
-  cloud_backup/results_condB/processed/confidence_by_position.csv       （图 3 数据：CondB 置信）
-  docs/submission/figs/report_fig_acc_by_model_task.png                 （复用图，复制）
-  docs/submission/figs/report_fig_condb.png                             （复用图，复制）
+Inputs:
+  cloud_backup/results/processed_judge/accuracy.csv                     (aggregated by build_report_tables_v2.py)
+  docs/submission/report_draft_v2/tables/table1_acc_ci.csv              (figure 1 data: model × task acc + 95% CI)
+  cloud_backup/results/processed/transition_stats.csv                   (figure 2 data: backoff/recovery)
+  cloud_backup/results/processed_judge/confidence_by_position.csv       (figure 3 data: CondA confidence)
+  cloud_backup/results_condB/processed/confidence_by_position.csv       (figure 3 data: CondB confidence)
+  docs/submission/figs/report_fig_acc_by_model_task.png                 (reused figure, copied)
+  docs/submission/figs/report_fig_condb.png                             (reused figure, copied)
 
-产物（docs/submission/report_draft_v2/figs/）：
-  fig_acc_by_model_task_ci.png     图 1 模型×任务 judge-acc + story 级 cluster bootstrap 95% CI
-  fig_process_profile.png          图 2 过程画像（至少一次回退的 run 占比 / 每 run 恢复次数）
-  fig_confidence_by_position.png   图 3 置信度×句位分位（CondA 实线 + CondB 虚线）
-  report_fig_acc_by_model_task.png 复用（源 docs/submission/figs/）
-  report_fig_condb.png             复用（源 docs/submission/figs/）
+Artifacts (docs/submission/report_draft_v2/figs/):
+  fig_acc_by_model_task_ci.png     figure 1: model × task judge-acc + story-level cluster bootstrap 95% CI
+  fig_process_profile.png          figure 2: process profile (share of runs with at least one backoff / recoveries per run)
+  fig_confidence_by_position.png   figure 3: confidence × sentence-position quartile (CondA solid + CondB dashed)
+  report_fig_acc_by_model_task.png reused (source docs/submission/figs/)
+  report_fig_condb.png             reused (source docs/submission/figs/)
 
-用法： python -X utf8 scripts/plot_report_figs_v2.py
+Usage: python -X utf8 scripts/plot_report_figs_v2.py
 """
 import csv
 import os
@@ -40,7 +40,7 @@ MODEL_LABELS = ("Qwen-0.5B", "Qwen-1.5B", "Qwen-7B", "Qwen-14B", "Qwen-32B",
                 "DS-7B", "DS-14B", "DS-32B")
 TASKS = ("false_belief", "faux_pas", "implicature")
 TASK_LABELS = {"false_belief": "False Belief", "faux_pas": "Faux Pas", "implicature": "Implicature"}
-# 色弱友好（Okabe-Ito 子集）
+# colour-blind friendly (a subset of Okabe-Ito)
 COLORS = {"false_belief": "#0072B2", "faux_pas": "#D55E00", "implicature": "#009E73"}
 CONF_MODELS = ("qwen7b", "qwen14b", "qwen32b", "deepseek7b", "deepseek14b", "deepseek32b")
 CONF_COLORS = {"qwen7b": "#0072B2", "qwen14b": "#56B4E9", "qwen32b": "#009E73",

@@ -1,13 +1,15 @@
-"""Accuracy 指标（scaf.md 11.1 L1109-1130，裁决 C10：embedding 相似度 + threshold）。
+"""Accuracy metric (scaf.md 11.1 L1109-1130; ruling C10: embedding similarity + threshold).
 
-设计说明（P1-4）：
-- embedding_similarity 仅是评分方法之一（experiment.yaml `scoring.method` 预留 LLM
-  judge 替换位）。它对“整段长 gold 散文 vs 模型整段 response”的比对很片面：长文本的
-  cosine 被通用措辞重叠主导，0.7 固定阈值无校准依据，会产出接近噪声的 0/1。
-- 本实现允许 gold 为“多参考关键点”（gold_points 列表）：存在时取与任一参考点的
-  最大相似度，避免单一长 gold 使阈值失效；缺失时回退单条 gold_answer（旧行为）。
-- 调用方应先对 response 做归一化（extract_interpretation），并把 threshold 在健康
-  子集上校准，勿直接信任固定 0.7。
+Design notes (P1-4):
+- embedding_similarity is only one of the scoring methods (experiment.yaml `scoring.method`
+  keeps a slot for an LLM judge replacement). Comparing a full long gold prose against a
+  full model response is crude: the cosine of long texts is dominated by generic wording
+  overlap, and the fixed 0.7 threshold has no calibration basis, producing near-noise 0/1.
+- This implementation allows gold to be "multiple reference key points" (a gold_points list):
+  when present, the maximum similarity to any reference is used, so a single long gold
+  cannot void the threshold; when absent, it falls back to the single gold_answer (old behaviour).
+- Callers should normalise the response first (extract_interpretation) and calibrate the
+  threshold on a healthy subset; do not trust the fixed 0.7 as is.
 """
 
 from __future__ import annotations
@@ -18,14 +20,14 @@ from analysis.confidence import extract_interpretation
 
 
 def _references(gold) -> Iterable[str]:
-    """将 gold_points 列表 / gold_answer 字符串统一为可遍历的参考文本。"""
+    """Normalise a gold_points list / gold_answer string into an iterable of reference texts."""
     if isinstance(gold, (list, tuple)):
         return [g for g in gold if g]
     return [] if not gold else [gold]
 
 
 def best_similarity(response: str, gold, service) -> float:
-    """response 解释与任一 gold 参考点的最大余弦相似度（多参考时的稳健度量）。"""
+    """Maximum cosine similarity between the response interpretation and any gold reference point (robust with multiple references)."""
     refs = _references(gold)
     if not refs:
         return 0.0
@@ -38,9 +40,9 @@ def best_similarity(response: str, gold, service) -> float:
 
 def calculate_accuracy(response: str, gold, service, threshold: float, *,
                        judge_fn=None, question: str | None = None) -> float:
-    """accuracy：余弦 > threshold 记 1；若给 judge_fn 则以其等价判定为准（P1-4 完整路线）。
+    """accuracy: cosine > threshold scores 1; when judge_fn is given, its equivalence decision takes precedence (the full P1-4 route).
 
-    judge_fn(question, answer_norm, gold) -> True/False/None；None 与 False 都记 0（无法判定不虚报）。
+    judge_fn(question, answer_norm, gold) -> True/False/None; both None and False score 0 (undecidable cases are not counted as correct).
     """
     if judge_fn is not None:
         ans = extract_interpretation(response)

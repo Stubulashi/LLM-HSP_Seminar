@@ -1,8 +1,9 @@
-"""Incremental Runner（pipeline.md 七节 L609-700 / scaf.md 7 节 L839-898）。
+"""Incremental Runner (pipeline.md section 7 L609-700 / scaf.md section 7 L839-898).
 
-逐句累加 context → build prompt → model.generate → record，每步即存（崩溃不丢前序）。
-record 字段按裁决 C3：model/story_id/task/step/context/response/confidence/repetition/metadata。
-confidence 在原始阶段置 None，由 analysis 处理管线回填（scaf.md Principle 3：raw → processed）。
+Accumulate context sentence by sentence → build prompt → model.generate → record; every
+step is persisted immediately, so a crash never loses earlier steps. Record fields follow
+ruling C3: model/story_id/task/step/context/response/confidence/repetition/metadata.
+confidence is None at the raw stage and filled in by the analysis pipeline (scaf.md Principle 3: raw → processed).
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ class IncrementalRunner:
         temperature: float,
         seed: int,
     ) -> list[dict]:
-        """对单个 story 运行增量实验，返回 records；每步已落盘。"""
+        """Run the incremental experiment on one story and return the records; every step is already on disk."""
         context_parts: list[str] = []
         records: list[dict] = []
         n_total = len(story["sentences"])
@@ -54,7 +55,7 @@ class IncrementalRunner:
                 "step": sentence["id"],
                 "context": context,
                 "response": response,
-                "confidence": None,  # 由 analysis 回填（scaf.md Principle 3）
+                "confidence": None,  # filled in by analysis (scaf.md Principle 3)
                 "repetition": repetition,
                 "metadata": {
                     "model_version": getattr(model, "path", model_name),

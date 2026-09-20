@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""三类数据集最小全链路验证（并行冒烟扩展；不改 smoke_test.py）。
+"""Minimal end-to-end verification across the three datasets (a parallel smoke extension; smoke_test.py is untouched).
 
-覆盖 task：faux_pas(FauxPas 中文? 否 -> 英文 sfp) / false_belief(OpenToM) /
-implicature(SwordsmanImp-中文)。运行时仅使用 mock 模型，1 重复。
+Covers the tasks: faux_pas (FauxPas — not Chinese; English sfp) / false_belief (OpenToM) /
+implicature (SwordsmanImp — Chinese). Only the mock model is used at run time, with 1 repetition.
 
-策略（不改变量架构 / 不改 main.py 默认目录）：
-  1. 从 datasets/<cls>/annotated 选择代表性样本（FauxPas 用其中一个 task=faux_pas 的 sfp；
-     OpenToM=fb001；Swordsman=swmimp001）。
-  2. 复制到 data/annotated/<story>.json 并把 reviewed 置 True（main.py run 需 reviewed）。
-  3. 逐 task 调用 main 的 run（mock, 1repetition, 用 --stories 限定仅样本）。
-  4. 校验 run JSONL：无 NaN/None/截断；critical 在界；response 含 "Confidence: NN"。
-  5. 调用 analyze，断言 3 个 CSV + 3 张 PNG 均非空。
-  6. 清理本轮放入 data/annotated 的临时样本（fp001 smoke 保留不动）。
+Strategy (no architecture changes / no changes to main.py's default directories):
+  1. Pick a representative sample from datasets/<cls>/annotated (one sfp with task=faux_pas for FauxPas;
+     OpenToM=fb001; Swordsman=swmimp001).
+  2. Copy it to data/annotated/<story>.json and set reviewed to True (main.py run requires reviewed).
+  3. Run main's run per task (mock, 1 repetition, --stories limited to the samples).
+  4. Verify the run JSONL: no NaN/None/truncation; critical in range; response contains "Confidence: NN".
+  5. Run analyze and assert that all 3 CSVs + 3 PNGs are non-empty.
+  6. Clean up the temporary samples placed into data/annotated this round (the fp001 smoke file is kept).
 
-用法：python scripts/smoke_multi_datasets.py
+Usage: python scripts/smoke_multi_datasets.py
 """
 from __future__ import annotations
 
@@ -38,14 +38,14 @@ def main() -> int:
     from annotation.validator import AnnotationValidator
     from main import main as cli
 
-    dm = None  # 延迟
+    dm = None  # deferred
     from data_manager import DataManager
 
     dm = DataManager()
     dst = dm.annotated_dir
 
-    # ---------- 选样本 ----------
-    # FauxPas: 选一个 task==faux_pas 的 sfp
+    # ---------- sample selection ----------
+    # FauxPas: pick one sfp with task==faux_pas
     faux_story = None
     for f in sorted((Path("datasets/faux_pas/annotated")).glob("sfp*.json")):
         d = json.load(open(f, encoding="utf-8"))
@@ -61,7 +61,7 @@ def main() -> int:
             open("datasets/swordsmanimp/annotated/swmimp001.json", encoding="utf-8"))),
     ]
 
-    # ---------- 复制进入 data/annotated（reviewed=True）----------
+    # ---------- copy into data/annotated (reviewed=True) ----------
     placed = []
     for task, sid, d in samples:
         d = dict(d)
@@ -74,7 +74,7 @@ def main() -> int:
             json.dump(d, fh, ensure_ascii=False, indent=2)
         placed.append(sid)
 
-    # ---------- validator 校验 -------------
+    # ---------- validator check -------------
     v = AnnotationValidator()
     for sid in placed:
         obj = json.load(open(dst / f"{sid}.json", encoding="utf-8"))
@@ -82,7 +82,7 @@ def main() -> int:
         msg = f"[validator] {sid}: {'PASS' if ok else 'FAIL ' + '; '.join(errs)}"
         print(msg)
 
-    # ---------- run（mock）----------
+    # ---------- run (mock) ----------
     stories = ",".join(placed)
     print("run stories:", stories)
     rc = cli(["run", "--mock", "--model", "mock7b", "--stories", stories,
@@ -91,16 +91,16 @@ def main() -> int:
         print("[FAIL] run rc=", rc)
         return 2
 
-    # ---------- raw 校验 ----------
+    # ---------- raw verification ----------
     ok = True
     for sid in placed:
         run_file = dst is not None and (Path("results") / "raw" / "mock7b"
                                         / "faux_pas" / sid / "run1.json")
-        # 需要落实真实 parent by task: 先 map task 于相应源
-        # 找到该 sid 的 task source 目录路径硬关联(见上 samples)
-    # 直接据此循环修正 parent task:
+        # the real parent must follow the task: map each task to its own source
+        # the task-source directory of each sid is hard-linked as in the samples above
+        # (fix the parent task in the loop below:)
     results_failed = []
-    # 因为 task 各不同，改为按 samples task id 目录
+    # since the tasks differ, iterate by the task ids of the samples
     del ok
     for task, sid, _ in samples:
         rf = Path("results") / "raw" / "mock7b" / task / sid / "run1.json"
@@ -144,7 +144,7 @@ def main() -> int:
         return 5
     print("[OK] analyze artifacts present:", ", ".join(expected))
 
-    # ---------- 清理 ----------
+    # ---------- cleanup ----------
     keep = {"fp001.json"}
     for sid in placed:
         p = dst / f"{sid}.json"

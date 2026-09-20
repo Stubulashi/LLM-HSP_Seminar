@@ -1,9 +1,9 @@
-"""用 qwen15b（本地 4GB，4bit）对三任务代表性小样跑完整增量流程。
+"""Run the full incremental pipeline with qwen15b (local 4GB, 4bit) on representative samples of the three tasks.
 
-写入权威路径 results/raw/qwen15b/{task}/{story}/run1.json，使 `analyze` 能纳入。
-用法：
+Writes to the authoritative path results/raw/qwen15b/{task}/{story}/run1.json so that `analyze` picks it up.
+Usage:
     python -X utf8 scripts/run_qwen15b_flow.py
-环境：PYTHONPATH 需含仓库根；模型权重已在本地 HF 缓存。
+Environment: PYTHONPATH must contain the repo root; the model weights are already in the local HF cache.
 """
 import json, os, sys, time
 
@@ -14,7 +14,7 @@ from data_manager import DataManager
 from experiment import IncrementalRunner, PromptBuilder, ResultRecorder
 from models import ModelFactory
 
-# 三任务代表性小样（均有 question：false_belief 原有；faux_pas/implicature 本轮补齐）
+# representative samples of the three tasks (all with a question: false_belief had them; faux_pas/implicature were filled in this round)
 SAMPLE = {
     "false_belief": ["fb001", "fb002"],
     "faux_pas": ["sfp001", "sfp002"],
@@ -47,7 +47,7 @@ def main() -> int:
                     model_name=MODEL,
                     repetition=1,
                     temperature=cfg.get("experiment")["temperature"],
-                    seed=42,  # 确定性：与 run 阶段默认 master 无关，固定探针种子
+                    seed=42,  # deterministic: independent of the run-stage master seed; a fixed probe seed
                 )
                 n_records += len(recs)
                 has_q = bool(ann.get("question"))

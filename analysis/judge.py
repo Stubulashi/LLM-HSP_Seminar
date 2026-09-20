@@ -1,21 +1,22 @@
-"""LLM 等价判定（judge）—— 替代/补充余弦相似度的 accuracy/emergence 判据。
+"""LLM equivalence judge — an accuracy/emergence criterion that replaces or complements cosine similarity.
 
-背景（实测）：0.5B/1.5B 对单点 question 的回答常"语义邻近但措辞不同"，MiniLM 短句
-余弦 0.7 阈值既会漏报(swmimp001 近对判 0)也会误报(sfp001 说 no faux pas 却 cosine 过线)。
-本模块对 (question, model_answer, gold) 做"是否表达同一意思"的二值判定。
+Background (measured): for single-point questions, 0.5B/1.5B answers are often "semantically close but differently worded";
+the MiniLM cosine threshold of 0.7 both misses true matches (swmimp001: near-correct scored 0) and
+accepts false ones (sfp001 said "no faux pas" yet passed the cosine line). This module makes a binary
+"same meaning or not" decision over (question, model_answer, gold).
 
-provider 三选一：
-- "local"：本地缓存的 HF 模型（默认 qwen15b），懒加载 + 卸载；
-- "deepseek" / "kimi"：OpenAI 兼容 API（密钥经 .env / 环境变量，绝不入代码或提交）。
+Three providers:
+- "local": a locally cached HF model (qwen15b by default), lazy load + unload;
+- "deepseek" / "kimi": OpenAI-compatible APIs (keys come from .env / environment variables and never enter the code or commits).
 
-失败策略：缺 key / 请求失败均显式 raise（ConfigError/RuntimeError），不静默；
-解析不出 YES/NO 时返回 {'label': None}（聚合层计"无法判定"），而非当作 False。
-fallback_provider 提供显式回退开关（默认 None = 不回退，避免静默降级混淆口径）。
+Failure policy: a missing key or a failed request raises explicitly (ConfigError/RuntimeError), never silently;
+when YES/NO cannot be parsed it returns {'label': None} (aggregated as "undecidable") rather than False.
+fallback_provider is an explicit fallback switch (default None = no fallback, so silent degradation never blurs the protocol).
 
-用法：
+Usage:
     j = LLMEquivalenceJudge(provider="local", model_name="qwen15b")
-    j = LLMEquivalenceJudge(provider="deepseek")   # 读 .env DEEPSEEK_*
-    j.load()  # local 才真正加载模型；api 仅校验配置
+    j = LLMEquivalenceJudge(provider="deepseek")   # reads .env DEEPSEEK_*
+    j.load()  # local really loads the model; api only validates the config
     print(j.judge(question, answer, gold))  # {'label': True/False/None, 'rationale': str}
     j.unload()
 """
@@ -55,7 +56,7 @@ VALID_PROVIDERS = LOCAL_PROVIDERS + API_PROVIDERS
 
 
 def load_dotenv_silent() -> None:
-    """加载根目录 .env（可选依赖 python-dotenv；缺失则手写解析）。"""
+    """Load the root .env (python-dotenv is optional; fall back to a hand-written parser)."""
     try:
         from dotenv import load_dotenv
 
@@ -74,7 +75,7 @@ def _env_or_raise(key: str) -> str:
     val = os.environ.get(key, "").strip()
     if not val:
         raise RuntimeError(
-            f"{key} 未配置：请在 c:\\HSP\\.env 或环境变量中设置（示例见 docs 说明）。"
+            f"{key} is not set: configure it in c:\\HSP\\.env or in the environment (see the docs for examples)."
         )
     return val
 
@@ -89,10 +90,10 @@ def _api_config(provider: str):
 
 
 def _parse_label(out: str) -> bool | None:
-    """从 judge 输出解析 YES/NO；兼容加粗/破折号/前后缀噪声。"""
+    """Parse YES/NO from the judge output; tolerates bold, dashes and prefix/suffix noise."""
     if not out:
         return None
-    # 去掉常见 markdown/装饰字符后取首个词
+    # strip common markdown/decoration characters, then take the first word
     clean = re.sub(r"[*_`#\-]+", "", out).strip()
     first = clean.splitlines()[0].strip().lstrip(".: ") if clean.splitlines() else clean
     head = first.upper()
@@ -100,7 +101,7 @@ def _parse_label(out: str) -> bool | None:
         return True
     if head.startswith("NO"):
         return False
-    # 兜底：全文首个独立 yes/no 词（防止“… 回答是 Yes”等句式）
+    # fallback: the first standalone yes/no word in the whole text (handles wording like "... the answer is Yes")
     m = re.search(r"\b(YES|NO)\b", clean.upper())
     return True if m and m.group(1) == "YES" else (False if m else None)
 
@@ -110,7 +111,7 @@ def _api_judge(provider: str, prompt: str, max_tokens: int,
     try:
         from openai import OpenAI
     except ImportError as exc:
-        raise RuntimeError("openai 未安装（API judge 需要）；请 pip install openai") from exc
+        raise RuntimeError("openai is not installed (required for the API judge); run: pip install openai") from exc
     import random
     import time
 
@@ -130,31 +131,31 @@ def _api_judge(provider: str, prompt: str, max_tokens: int,
             )
             out = (resp.choices[0].message.content or "").strip()
             return {"label": _parse_label(out), "rationale": out[:200]}
-        except Exception as exc:  # 超时/限流/网络等
+        except Exception as exc:  # timeouts / rate limits / network errors etc.
             code = getattr(exc, "status_code", None)
             if code == 402:
-                # 余额不足：重试无意义，立即报错并给指引
+                # insufficient balance: retrying is pointless; fail immediately with guidance
                 raise RuntimeError(
-                    "[judge] API 402 Insufficient Balance：请到 DeepSeek 控制台充值后重跑；"
-                    "已成功判定的行在 judge_cache.jsonl 中，重跑不会重复计费。"
+                    "[judge] API 402 Insufficient Balance: top up in the DeepSeek console and rerun; "
+                    "rows already judged are stored in judge_cache.jsonl, so a rerun is not billed twice."
                 ) from exc
             last_err = exc
             if attempt < retries:
-                # 指数退避 + 抖动；429/5xx/连接错误给更长等待，避免持续撞限流
+                # exponential backoff with jitter; longer waits for 429/5xx/connection errors to avoid hammering the rate limit
                 base = 2.0 if code in (429, 500, 502, 503, 504) else 1.0
                 delay = min(30.0, base * (2 ** attempt)) + random.uniform(0, 0.8)
                 time.sleep(delay)
-    raise RuntimeError(f"[judge:{provider}] 请求失败（重试{retries}次后）：{last_err}")
+    raise RuntimeError(f"[judge:{provider}] request failed (after {retries} retries): {last_err}")
 
 
 class LLMEquivalenceJudge:
-    """语义等价判定器（local HF / deepseek / kimi API）。"""
+    """Semantic equivalence judge (local HF / deepseek / kimi API)."""
 
     def __init__(self, provider: str = "local", model_name: str = "qwen15b",
                  config=None, max_tokens: int = 64, timeout: int = 30,
                  retries: int = 2, fallback_provider: str | None = None):
         if provider not in VALID_PROVIDERS:
-            raise ValueError(f"provider 须为 {VALID_PROVIDERS}，收到 {provider!r}")
+            raise ValueError(f"provider must be one of {VALID_PROVIDERS}; got {provider!r}")
         self.provider = provider
         self.model_name = model_name
         self._config = config
@@ -175,7 +176,7 @@ class LLMEquivalenceJudge:
                 self._model = ModelFactory(self._config).create(self.model_name)
                 self._model.load()
         else:
-            # API：仅校验配置可解析（不校验 key 有效性，留到首次请求）
+            # API: only check that the config parses (key validity is checked on the first request)
             _api_config(self.provider)
 
     def unload(self) -> None:
@@ -184,7 +185,7 @@ class LLMEquivalenceJudge:
             self._model = None
 
     def judge(self, question: str, answer: str, gold: str) -> dict:
-        """返回 {'label': True/False/None, 'rationale': str}。None=无法判定。"""
+        """Returns {'label': True/False/None, 'rationale': str}. None means undecidable."""
         prompt = _JUDGE_PROMPT.format(
             question=question or "(none)", gold=(gold or "").strip(), answer=(answer or "").strip())
         if self.provider != "local":

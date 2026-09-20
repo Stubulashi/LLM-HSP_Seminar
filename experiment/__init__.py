@@ -1,4 +1,4 @@
-"""experiment 包：实验引擎（pipeline.md 七-十节 / scaf.md 7-9 节）。"""
+"""experiment package: the experiment engine (pipeline.md sections 7-10 / scaf.md sections 7-9)."""
 
 from experiment.incremental_runner import IncrementalRunner
 from experiment.prompt_builder import PromptBuilder

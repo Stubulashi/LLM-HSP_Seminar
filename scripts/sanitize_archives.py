@@ -1,9 +1,9 @@
-"""剥离本地打包件中的 .env 后重打包（安全维护脚本）。
+"""Strip .env from the local packages and repack them (a safety-maintenance script).
 
-背景：HSP_cloud.zip / HSP_cloud.tar.gz 曾把 .env（含 API 密钥）打入包内。
-本脚本复制除 .env 外的全部条目，写临时文件后原子替换原归档。
+Background: HSP_cloud.zip / HSP_cloud.tar.gz once shipped the .env file (with API keys) inside the package.
+This script copies every entry except .env, writes a temporary file and atomically replaces the original archive.
 
-用法（仓库根目录或任意位置）：
+Usage (from the repo root or anywhere):
     python -X utf8 scripts/sanitize_archives.py
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ def sanitize_zip(path: Path) -> None:
         names = zin.namelist()
         skipped = [n for n in names if _is_env(n)]
         if not skipped:
-            print(f"[skip] {path.name}: 无 .env")
+            print(f"[skip] {path.name}: no .env")
             return
         tmp = path.with_suffix(path.suffix + ".tmp")
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -37,7 +37,7 @@ def sanitize_zip(path: Path) -> None:
                     continue
                 zout.writestr(item, zin.read(item.filename))
     os.replace(tmp, path)
-    print(f"[ok] {path.name}: 已剥离 {len(skipped)} 项 .env，条目 {len(names)} -> {len(names) - len(skipped)}")
+    print(f"[ok] {path.name}: stripped {len(skipped)} .env entries; items {len(names)} -> {len(names) - len(skipped)}")
 
 
 def sanitize_tar(path: Path) -> None:
@@ -45,7 +45,7 @@ def sanitize_tar(path: Path) -> None:
         members = tin.getmembers()
         skipped = [m.name for m in members if _is_env(m.name)]
         if not skipped:
-            print(f"[skip] {path.name}: 无 .env")
+            print(f"[skip] {path.name}: no .env")
             return
         tmp = path.with_suffix(path.suffix + ".tmp")
         with tarfile.open(tmp, "w:gz") as tout:
@@ -55,7 +55,7 @@ def sanitize_tar(path: Path) -> None:
                 fileobj = tin.extractfile(m) if m.isfile() else None
                 tout.addfile(m, fileobj)
     os.replace(tmp, path)
-    print(f"[ok] {path.name}: 已剥离 {len(skipped)} 项 .env，成员 {len(members)} -> {len(members) - len(skipped)}")
+    print(f"[ok] {path.name}: stripped {len(skipped)} .env members; members {len(members)} -> {len(members) - len(skipped)}")
 
 
 def main() -> int:

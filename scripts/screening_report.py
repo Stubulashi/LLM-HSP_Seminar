@@ -1,17 +1,17 @@
-"""数据科研价值筛查（只读统计，不修改任何数据）。
+"""Scientific-value screening of the data (read-only statistics; nothing is modified).
 
-读取：
-  results/processed_judge/accuracy.csv, emergence.csv   （judge 口径正式结果）
-  results/raw/<model>/<task>/<story>/runN.json          （NDJSON 原始记录）
-  data/annotated/<story>.json                           （句数/句长）
+Reads:
+  results/processed_judge/accuracy.csv, emergence.csv   (the official judge-based results)
+  results/raw/<model>/<task>/<story>/runN.json          (NDJSON raw records)
+  data/annotated/<story>.json                           (sentence counts/lengths)
 
-输出四节：
-  S1 emergence point 分布（含"仅末步达标"率）—— RQ1 增量涌现强弱判定
-  S2 空响应/纯回显比率（每 model×task，含与 judge-acc 对照）—— 数据质量门
-  S3 置信度解析率 + 置信×正确性关联 —— 置信度曲线研究可行性
-  S4 汇总（供贴回）
+Prints four sections:
+  S1 emergence-point distribution (including the "last step only" rate) — how strong the incremental emergence is for RQ1
+  S2 empty-response / pure-echo rate (per model × task, with the judge-acc contrast) — the data-quality gate
+  S3 confidence parse rate + confidence × correctness association — feasibility of the confidence-curve study
+  S4 summary (for pasting back)
 
-用法： python -X utf8 scripts/screening_report.py
+Usage: python -X utf8 scripts/screening_report.py
 """
 import csv, glob, json, os, statistics, sys
 
@@ -42,7 +42,7 @@ def _n_sent(story_id: str) -> int:
 
 
 def _load_raw_runs():
-    """返回 {model: [(task, story_id, rep, [records])]}。"""
+    """Returns {model: [(task, story_id, rep, [records])]}"""
     runs = []
     for p in sorted(glob.glob(os.path.join(BASE, "raw", "*", "*", "*", "run*.json"))):
         parts = os.path.normpath(p).split(os.sep)  # results/raw/<model>/<task>/<story>/runN.json
@@ -51,7 +51,7 @@ def _load_raw_runs():
         if not recs:
             continue
         rep = recs[0].get("repetition", 1)
-        # 跳过 task-drift（与 analyze 一致）
+        # skip task drift (consistent with analyze)
         try:
             ann = json.load(open(f"data/annotated/{story}.json", encoding="utf-8"))
         except Exception:
@@ -66,7 +66,7 @@ def _load_raw_runs():
 
 def sec1(acc, emg):
     print("=" * 60)
-    print("S1 emergence point 分布 (RQ1)")
+    print("S1 emergence-point distribution (RQ1)")
     print(f"{'model':11} {'task':13} {'n':>4} {'valid':>5} {'mean':>5} {'med':>4} "
           f"{'laststep%':>9} {'frac_of_len':>11}")
     for m in MODELS:
@@ -94,7 +94,7 @@ def sec1(acc, emg):
 
 def sec2(acc, emg, runs):
     print("=" * 60)
-    print("S2 空响应/纯回显比率 (数据质量门)")
+    print("S2 empty-response / pure-echo rate (data-quality gate)")
     print(f"{'model':11} {'task':13} {'runs':>5} {'empty%':>7} {'judge_acc':>9}")
     from collections import defaultdict
 
@@ -116,7 +116,7 @@ def sec2(acc, emg, runs):
 
 def sec3(acc, runs):
     print("=" * 60)
-    print("S3 置信度解析率与置信×正确性关联")
+    print("S3 confidence parse rate and confidence × correctness association")
     from collections import defaultdict
 
     conf_parse = defaultdict(lambda: [0, 0])  # (model,task): [parsed, total]

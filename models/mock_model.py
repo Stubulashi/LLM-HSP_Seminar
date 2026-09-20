@@ -1,9 +1,9 @@
-"""确定性 Mock 模型（补充约定：用于冒烟测试与复现性抽查）。
+"""Deterministic mock model (supplementary convention: used for smoke tests and reproducibility spot checks).
 
-generate 基于 prompt 内容哈希生成稳定响应：
-- 标注 prompt（含 "linguistic annotation assistant"）：返回合法标注 JSON
-- 实验 prompt：返回解释 + "Confidence: XX"（兼容 analysis.confidence 提取）
-同一 prompt 结果恒等——支撑"同 seed 复跑一致"断言。
+generate derives a stable response from a hash of the prompt content:
+- annotation prompts (containing "linguistic annotation assistant") return valid annotation JSON;
+- experiment prompts return an interpretation plus "Confidence: XX" (compatible with the analysis.confidence extraction).
+The same prompt always yields the same result, which supports the "same seed, same output" assertion.
 """
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ _ANNOTATION_MARK = "linguistic annotation assistant"
 
 
 def _parse_prompt_sentences(prompt: str) -> list[str]:
-    """从标注 prompt 的编号列表提取句子（'1. xxx' 行）。
+    """Extract sentences from the numbered list in an annotation prompt ('1. xxx' lines).
 
-    只解析 "Sentences:" 标记之后的行，避免把指令中的编号项
-    （如 "1. Sentence function: ..."）误当句子。
+    Only lines after the "Sentences:" marker are parsed, so numbered items inside the
+    instructions (such as "1. Sentence function: ...") are not mistaken for sentences.
     """
     tail = prompt
     for marker in ("Sentences:", "sentences:"):
@@ -57,7 +57,7 @@ class MockModel(BaseModel):
         return self._generate_experiment(prompt)
 
     def _generate_annotation(self, prompt: str) -> str:
-        """标注模式：返回结构合法的标注 JSON（pipeline 会覆盖 id/task）。"""
+        """Annotation mode: return structurally valid annotation JSON (the pipeline overrides id/task)."""
         sentences = _parse_prompt_sentences(prompt)
         if not sentences:
             sentences = ["mock sentence one.", "mock sentence two."]

@@ -1,8 +1,8 @@
-"""Probe: Qwen2.5-1.5B-Instruct 小样增量重跑，判 0.5B 的 U+FFFD/退化是否属模型层伪影。
+"""Probe: re-run a small Qwen2.5-1.5B-Instruct incremental sample to tell whether the 0.5B U+FFFD/degeneration is a model-layer artefact.
 
-非破坏：把记录写入独立 results/probe_qwen15b/{task}/{story}/run1.json，
-不改动 results/raw 已有的 qwen05b 结果与 processed。
-用法： python -X utf8 scripts/_probe_qwen15b.py
+Non-destructive: records are written to the separate results/probe_qwen15b/{task}/{story}/run1.json
+without touching the existing qwen05b results under results/raw or the processed outputs.
+Usage: python -X utf8 scripts/_probe_qwen15b.py
 """
 import json, os, sys
 
@@ -13,8 +13,8 @@ from data_manager import DataManager
 from experiment import IncrementalRunner, PromptBuilder, ResultRecorder
 from models import ModelFactory
 
-MODEL = "qwen15b"  # models.yaml 中已配置 quantization:4bit（本地 4GB 极限）
-STORY_IDS = ["swmimp001", "swmimp002"]  # implicature 小样
+MODEL = "qwen15b"  # quantization:4bit is configured for it in models.yaml (the local 4GB limit)
+STORY_IDS = ["swmimp001", "swmimp002"]  # implicature samples
 
 
 def main() -> int:
@@ -50,7 +50,7 @@ def main() -> int:
                     for w in ["i'm ready", "ready for the next", "(enter the next sentence)"])
                 for r in records
             )
-            # 打印首尾各取一条干净样例供快速目检
+            # print one clean sample from the start of each run for a quick eyeball check
             for r in records[:1]:
                 print("   sample:", json.dumps(r["response"][:160], ensure_ascii=False), flush=True)
             print(f"[probe] {sid}: records={len(records)} U_FFFD_replies={bad} "

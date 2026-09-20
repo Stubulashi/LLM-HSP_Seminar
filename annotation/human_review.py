@@ -1,7 +1,7 @@
-"""Human Review System（pipeline.md L547-575 / scaf.md 5.6，裁决 C15）。
+"""Human Review System (pipeline.md L547-575 / scaf.md 5.6; ruling C15).
 
-可修改字段明确为 function / gold_answer / critical_sentence（裁决 C15）；
-审查通过后写入 reviewed: true（裁决 C15 状态字段）。
+The editable fields are exactly function / gold_answer / critical_sentence (ruling C15);
+after review the record is marked with reviewed: true (ruling C15 status field).
 """
 
 from __future__ import annotations
@@ -11,12 +11,12 @@ from annotation.validator import AnnotationValidator
 
 
 def _ask(prompt: str, input_fn) -> str:
-    """包装 input，便于测试注入。"""
+    """Wrap input so tests can inject a fake one."""
     return input_fn(prompt).strip().lower()
 
 
 def review_annotation(story_id: str, data_manager, input_fn=input, logger=None) -> dict:
-    """交互式审查标注；返回审查后数据（已写回 data/annotated/{story_id}.json）。"""
+    """Interactively review an annotation; returns the reviewed data (already written back to data/annotated/{story_id}.json)."""
     data = data_manager.load_annotation(story_id)
 
     print(f"=== Review {story_id} ===")
@@ -45,7 +45,7 @@ def review_annotation(story_id: str, data_manager, input_fn=input, logger=None) 
     if not ok:
         raise ValueError(f"reviewed data invalid: {'; '.join(errors)}")
 
-    data["reviewed"] = True  # 裁决 C15
+    data["reviewed"] = True  # ruling C15
     data_manager.save_annotation(story_id, data)
     if logger is not None:
         logger.info(f"reviewed {story_id}: accepted after human review")

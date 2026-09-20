@@ -1,8 +1,8 @@
-# IPLE Prompt 模板（版本化，scaf.md Principle 2 的 prompt version 来源）
+# IPLE prompt templates (versioned; the source of the prompt version in scaf.md Principle 2)
 prompts:
   prompt_version: "1.2"
 
-  # 实验条件（裁决 C13）：condition_b 为预留独立模板，延后实现，不计入 720 会话
+  # Experiment conditions (ruling C13): condition_b is the reserved separate template, implemented later, not counted in the 720 sessions
   conditions:
     condition_a:
       system: |
@@ -50,9 +50,11 @@ prompts:
         2. Character intention
         3. Confidence on the final line exactly `Confidence: <0-100>`, then stop.
 
-  # 任务级模板（裁决 C9）：false_belief 用"解释+回答问题"模板，其余用统一解释模板。
-  # P1-5 校准(1.2)：faux_pas/implicature 改为"单答式"模板——直接回答 question，
-  # 禁止编号三段式回声，置信仅作末行，避免 1.5B 类模型复述模板污染 embedding。
+  # Task-level templates (ruling C9): false_belief uses the "explain + answer the question" template,
+  # the others use the shared explanation template.
+  # P1-5 calibration (1.2): faux_pas/implicature switch to a "single-answer" template that answers
+  # the question directly; numbered three-part echoes are forbidden and the confidence stays on the
+  # last line, so 1.5B-class models do not pollute the embedding by echoing the template.
   tasks:
     default:
       template: |
@@ -87,7 +89,7 @@ prompts:
 
         Give a short direct answer in Chinese (one or two sentences stating the speaker's true implied meaning). Do not list numbered sections and do not restate these instructions. End your whole reply with exactly this final line: `Confidence: <0-100>`. Write nothing after it.
 
-  # 标注 prompt（裁决 C8，pipeline.md L434-460 措辞为准）
+  # Annotation prompt (ruling C8; wording per pipeline.md L434-460)
   annotation:
     template: |
       You are a linguistic annotation assistant.

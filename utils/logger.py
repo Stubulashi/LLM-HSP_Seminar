@@ -1,6 +1,6 @@
-"""日志系统（scaf.md 3 节）：info/warning/error + 时间戳 + 落盘。
+"""Logging system (scaf.md section 3): info/warning/error + timestamps + file output.
 
-所有模块必须通过 logger 输出（scaf.md L302-310）。
+Every module must log through the logger (scaf.md L302-310).
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ _logger: Logger | None = None
 
 
 def get_logger() -> Logger:
-    """进程级单例。"""
+    """Process-level singleton."""
     global _logger
     if _logger is None:
         _logger = Logger()

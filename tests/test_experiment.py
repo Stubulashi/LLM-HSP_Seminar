@@ -1,4 +1,4 @@
-"""M4 实验引擎单测：prompt_builder / incremental_runner / recorder / scheduler。"""
+"""M4 experiment engine unit tests: prompt_builder / incremental_runner / recorder / scheduler."""
 
 import json
 
@@ -37,7 +37,7 @@ def test_prompt_builder_condition_a(tmp_path):
     assert "language comprehension experiment" in prompt
     assert "Your confidence score from 0 to 100" in prompt
     assert "Do not assume future sentences" in prompt
-    # P0-1：置信必须为整段回答最后一行，且不许在之后追加说明（抑制 prose 尾随）
+    # P0-1: the confidence must be the last line of the whole reply, with nothing appended after it (suppresses prose tails)
     assert "Stop right after the confidence line" in prompt
 
 
@@ -53,7 +53,7 @@ def test_prompt_builder_false_belief_question(tmp_path):
 
 
 def test_prompt_builder_implicature_direct_template(tmp_path):
-    # P1-5 校准(1.2)：implicature 带 question → 单答式模板，不出现编号三段式回声
+    # P1-5 calibration (1.2): implicature with a question → single-answer template, no numbered three-part echo
     cfg, _, builder, _, _ = _setup(tmp_path)
     prompt = builder.build(
         context="Some implicature context.",
@@ -62,12 +62,12 @@ def test_prompt_builder_implicature_direct_template(tmp_path):
     )
     assert "这句话的言外之意是什么？" in prompt
     assert "Give a short direct answer in Chinese" in prompt
-    assert "1. Current situation interpretation" not in prompt  # 禁编号回声
+    assert "1. Current situation interpretation" not in prompt  # numbered echo forbidden
     assert "Stop right after the confidence line" in prompt or "Write nothing after it" in prompt
 
 
 def test_prompt_builder_faux_pas_direct_template(tmp_path):
-    # P1-5 校准(1.2)：faux_pas 带 question → 单答式模板
+    # P1-5 calibration (1.2): faux_pas with a question → single-answer template
     cfg, _, builder, _, _ = _setup(tmp_path)
     prompt = builder.build(
         context="A story context.",
@@ -122,13 +122,13 @@ def test_scheduler_jobs_and_idempotent(tmp_path):
         stories_by_task={"faux_pas": [STORY]}, repetitions=1,
     )
     assert len(jobs) == 1
-    assert jobs[0]["task"] == "faux_pas"  # 裁决 C11：Job 含 task
+    assert jobs[0]["task"] == "faux_pas"  # ruling C11: the job carries the task
 
     scheduler.execute(jobs)
     path = dm.result_path("mock7b", "faux_pas", "fp001", 1)
     first_run = path.read_text(encoding="utf-8")
 
-    scheduler.execute(jobs)  # 幂等：第二次跳过，文件不重写
+    scheduler.execute(jobs)  # idempotent: the second call skips and does not rewrite the file
     assert path.read_text(encoding="utf-8") == first_run
 
 

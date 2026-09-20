@@ -1,8 +1,9 @@
-"""IPLE 主入口（CLI 分发）。
+"""IPLE main entry point (CLI dispatcher).
 
-命令集（裁决 C5/C6，见 docs/decisions.md）：
+Commands (rulings C5/C6, see docs/decisions.md):
     setup / annotate / review / run / analyze
---mock 为补充约定的测试设施（冒烟/复现性验证用），不加载真实模型。
+--mock is a test facility (supplementary convention, for smoke tests and reproducibility checks);
+it does not load real models.
 """
 
 import argparse
@@ -22,46 +23,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("setup", help="环境自检（Python/依赖/GPU）+ 创建数据目录")
+    sub.add_parser("setup", help="environment self-check (Python/deps/GPU) + create data directories")
 
-    p_annotate = sub.add_parser("annotate", help="对原始故事运行标注管线")
+    p_annotate = sub.add_parser("annotate", help="run the annotation pipeline on raw stories")
     p_annotate.add_argument("--input", default="data/raw_stories/",
-                            help="原始故事目录（默认 data/raw_stories/）")
+                            help="raw story directory (default data/raw_stories/)")
     p_annotate.add_argument("--task", default=None,
-                            help=f"任务名 {VALID_TASKS}（默认从目录名推断，裁决 C11）")
+                            help=f"task name {VALID_TASKS} (default: inferred from the directory name; ruling C11)")
     p_annotate.add_argument("--mock", action="store_true",
-                            help="使用确定性 MockModel（测试/冒烟用，补充约定）")
+                            help="use the deterministic MockModel (tests/smoke runs; supplementary convention)")
 
-    p_review = sub.add_parser("review", help="人工审查标注")
-    p_review.add_argument("story_id", help="故事 id（无扩展名，如 fp001）")
+    p_review = sub.add_parser("review", help="human review of an annotation")
+    p_review.add_argument("story_id", help="story id (without extension, e.g. fp001)")
 
-    p_run = sub.add_parser("run", help="运行增量实验")
-    p_run.add_argument("--model", required=True, help="模型名（config/models.yaml 中的键）")
+    p_run = sub.add_parser("run", help="run the incremental experiment")
+    p_run.add_argument("--model", required=True, help="model name (a key in config/models.yaml)")
     p_run.add_argument("--task", default=None,
-                       help=f"任务名 {VALID_TASKS}（默认全部已标注任务）")
-    p_run.add_argument("--stories", default=None, help="逗号分隔的故事 id 子集（默认全部）")
+                       help=f"task name {VALID_TASKS} (default: all annotated tasks)")
+    p_run.add_argument("--stories", default=None, help="comma-separated subset of story ids (default: all)")
     p_run.add_argument("--repetitions", type=int, default=None,
-                       help="重复次数（默认取 experiment.yaml）")
+                       help="number of repetitions (default from experiment.yaml)")
     p_run.add_argument("--seed", type=int, default=None,
-                       help="seed 母种子覆盖（默认取 experiment.yaml）")
+                       help="master seed override (default from experiment.yaml)")
     p_run.add_argument("--mock", action="store_true",
-                       help="使用确定性 MockModel（测试/冒烟用，补充约定）")
+                       help="use the deterministic MockModel (tests/smoke runs; supplementary convention)")
 
-    p_analyze = sub.add_parser("analyze", help="计算指标并产出 CSV 与图（results/processed/）")
+    p_analyze = sub.add_parser("analyze", help="compute metrics and produce CSVs and figures (results/processed/)")
     p_analyze.add_argument("--scoring-method", default=None,
                            choices=["embedding_similarity", "local_judge", "api_judge"],
-                           help="评分口径；默认取 experiment.yaml scoring.method")
+                           help="scoring method; default: experiment.yaml scoring.method")
     p_analyze.add_argument("--judge-provider", default=None,
                            choices=["local", "deepseek", "kimi"],
-                           help="judge 模式供应商；默认取 scoring.judge_provider（api_judge 时）")
+                           help="judge provider; default: scoring.judge_provider (api_judge only)")
     p_analyze.add_argument("--results-dir", default="results",
-                           help="分析根目录（默认 results；Condition B 用 results_condB）")
+                           help="analysis root directory (default results; use results_condB for Condition B)")
 
     return parser
 
 
 def _get_model(config: ConfigManager, model_name: str, mock: bool, logger):
-    """创建并加载模型；mock 模式用确定性 MockModel（补充约定）。"""
+    """Create and load a model; mock mode uses the deterministic MockModel (supplementary convention)."""
     if mock:
         from models import MockModel
 
@@ -119,7 +120,7 @@ def cmd_run(args, config: ConfigManager, dm: DataManager, logger) -> int:
     if args.seed is not None:
         experiment["seed_master"] = args.seed
 
-    # 收集已标注故事（跳过未 review 的，保护数据完整性）
+    # collect annotated stories (skip those not yet reviewed to protect data integrity)
     stories_by_task: dict[str, list[dict]] = {}
     for path in sorted(dm.annotated_dir.glob("*.json")):
         story = dm.load_annotation(path.stem)
@@ -169,7 +170,7 @@ def cmd_analyze(args, config: ConfigManager, dm: DataManager, logger) -> int:
 
     scoring = config.get("scoring")
     method = args.scoring_method or scoring.get("method", "embedding_similarity")
-    # allow_models：只分析 models.yaml 中声明的真实模型，排除 mock/杂散（科研口径）
+    # allow_models: analyze only real models declared in models.yaml (excludes mock/stray names; research protocol)
     allow = set(config.get("models").keys())
     judge_fn = None
     judge = None
@@ -178,11 +179,11 @@ def cmd_analyze(args, config: ConfigManager, dm: DataManager, logger) -> int:
 
         provider = args.judge_provider or scoring.get("judge_provider")
         if not provider:
-            raise RuntimeError("judge 模式需配置 scoring.judge_provider 或 --judge-provider")
+            raise RuntimeError("judge mode requires scoring.judge_provider or --judge-provider")
         logger.info(f"analyze method={method} provider={provider}")
         judge = LLMEquivalenceJudge(provider=provider)
         judge.load()
-        # judge() 返回 {'label':…,"rationale":…}，pipeline 需要 bool/None
+        # judge() returns {'label': ..., 'rationale': ...}; the pipeline needs bool/None
         judge_fn = lambda q, a, g: judge.judge(q or "", a, g)["label"]
     try:
         outputs = run_analysis(args.results_dir, dm, config, logger,

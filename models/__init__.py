@@ -1,4 +1,4 @@
-"""models 包：模型层（pipeline.md 九节 / scaf.md 6 节，裁决 C1/C4/C14）。"""
+"""models package: the model layer (pipeline.md section 9 / scaf.md section 6; rulings C1/C4/C14)."""
 
 from models.base_model import BaseModel
 from models.factory import ModelFactory

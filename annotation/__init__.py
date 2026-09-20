@@ -1,4 +1,4 @@
-"""annotation 包：标注管线（数据入口，pipeline.md 六节 / scaf.md 5 节）。"""
+"""annotation package: the annotation pipeline (data entry point; pipeline.md section 6 / scaf.md section 5)."""
 
 from annotation.annotation_agent import AnnotationAgent, AnnotationError
 from annotation.human_review import review_annotation

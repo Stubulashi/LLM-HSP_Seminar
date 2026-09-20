@@ -1,17 +1,17 @@
-"""RQ3「错误更新/回退」审计：从 judge 缓存重放逐 step 判定标签并统计回退。
+"""RQ3 "erroneous update / regression" audit: replay the per-step judge labels from the judge cache and count regressions.
 
-proj.md RQ3（L139-152）要求检验模型是否"更少发生错误更新"。本脚本对每个 run 重放
-逐 step 的 judge 标签（复用 judge_cache.jsonl，零 API 调用）：
-  1) results/processed/step_labels.csv        每 run 每 step 的 judge 标签（1/0）
-  2) results/processed/transition_stats.csv   每 (model,task) 的转移统计：
-       regressions   发生"正确→错误"回退的总次数
-       regressed_runs 至少发生一次回退的 run 占比
-       recoveries     "错误→正确"恢复次数
-       final_correct  末步正确率（与 accuracy.csv 对照用）
-       never_correct  从未正确占比
-   并打印按模型的汇总（含 condB 目录）。
+proj.md RQ3 (L139-152) asks whether models make "fewer erroneous updates". This script replays the
+per-step judge labels for every run (reusing judge_cache.jsonl; zero API calls):
+  1) results/processed/step_labels.csv        per-run per-step judge label (1/0)
+  2) results/processed/transition_stats.csv   per (model,task) transition statistics:
+       regressions    total count of "correct→wrong" backoffs
+       regressed_runs share of runs with at least one backoff
+       recoveries     count of "wrong→correct" recoveries
+       final_correct  last-step accuracy (for comparison with accuracy.csv)
+       never_correct  share of runs never correct
+   and prints a per-model summary (including the condB directory).
 
-用法：
+Usage:
   python -X utf8 scripts/stepwise_labels.py
   python -X utf8 scripts/stepwise_labels.py --results-dir results_condB
 """
@@ -41,7 +41,7 @@ def _load_cache(path: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--results-dir", default="results")
-    ap.add_argument("--cache", default=None, help="默认 <results-dir>/processed_judge* 下全部 judge_cache.jsonl")
+    ap.add_argument("--cache", default=None, help="defaults to all judge_cache.jsonl files under <results-dir>/processed_judge*")
     ap.add_argument("--out-dir", default=None)
     args = ap.parse_args()
     rd = args.results_dir
@@ -55,12 +55,12 @@ def main() -> int:
     dm = DataManager()
     allow = set(cfg.get("models").keys())
 
-    # 合并缓存：main results 的 processed_judge 与 condB 的 processed_judge_condB
+    # merge caches: processed_judge of the main results and processed_judge_condB of condB
     cache = {}
     if args.cache:
         cache.update(_load_cache(args.cache))
     else:
-        # 常见缓存位置都尝试（condB 时 rd=results_condB，但缓存通常在 results/processed_judge_condB 下）
+        # try all the common cache locations (for condB, rd=results_condB, but the cache usually sits under results/processed_judge_condB)
         for c in (os.path.join(rd, "processed_judge", "judge_cache.jsonl"),
                   os.path.join(rd, "processed_judge_condB", "judge_cache.jsonl"),
                   os.path.join("results", "processed_judge", "judge_cache.jsonl"),
@@ -87,7 +87,7 @@ def main() -> int:
         for r in ordered:
             norm = extract_interpretation(r["response"]).strip()
             if not norm:
-                lab = 0  # 空解释视为不等价（与 judge_analyze 口径一致）
+                lab = 0  # an empty interpretation counts as not equivalent (consistent with judge_analyze)
             else:
                 key = sha1("|{0}|{1}|{2}".format(q, norm, gold).encode("utf-8")).hexdigest()
                 v = cache.get(key)

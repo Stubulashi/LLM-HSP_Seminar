@@ -1,18 +1,19 @@
-"""验证 config/models.yaml 中所有模型仓库在 HF 上真实可下载（防"找不到模型"）。
+"""Verify that every model repository in config/models.yaml really is downloadable on HF (guards against "model not found").
 
-规则：
-- 对每个 backend in (huggingface, vllm) 且 path 为远程仓库 id 的条目：
-  - config.json 必在；
-  - safetensors 权重必在（model.safetensors.index.json 或单文件 model.safetensors）；
-  - 量化判定（仅 backend=vllm 且 quantization in awq/gptq/fp8 时启用）：
-      满足其一即 PASS——① 仓库含 quantize_config.json；
-      ② config.json 内含 quantization_config 且声明对应 quant_method（awq/gptq/fp8）。
-    huggingface 后端的 4bit/8bit 是 bitsandbytes 运行时量化，不要求仓库自带量化元数据。
-- path 为本地目录（os.path.isdir）跳过。
+Rules:
+- For every entry whose backend is in (huggingface, vllm) and whose path is a remote repository id:
+  - config.json must exist;
+  - safetensors weights must exist (model.safetensors.index.json or a single model.safetensors);
+  - quantization check (enabled only when backend=vllm and quantization in awq/gptq/fp8):
+      PASS if either ① the repository contains quantize_config.json, or
+      ② config.json contains quantization_config declaring the matching quant_method (awq/gptq/fp8).
+    The huggingface backend's 4bit/8bit is bitsandbytes runtime quantization, so the repository does
+    not need to ship quantization metadata.
+- Entries whose path is a local directory (os.path.isdir) are skipped.
 
-用法（云端，网络可达）：
+Usage (on the cloud, with network access):
     python -X utf8 scripts/verify_models.py
-    # 输出全 PASS 即放心 preflight；有 FAIL 会提示可替换仓库。
+    # All PASS means preflight is safe; any FAIL points at a replacement repository.
 """
 import argparse, json, os, sys
 
@@ -30,9 +31,9 @@ def _make_api(timeout: int):
     from huggingface_hub import HfApi
 
     try:
-        return HfApi(timeout=timeout)  # huggingface_hub<1.30 支持
+        return HfApi(timeout=timeout)  # supported by huggingface_hub<1.30
     except TypeError:
-        return HfApi()  # huggingface_hub>=1.30 移除了 timeout 参数
+        return HfApi()  # huggingface_hub>=1.30 removed the timeout parameter
 
 
 def _config_text(api, repo_id: str) -> str:
@@ -50,7 +51,7 @@ def check_repo(repo_id: str, quant: str | None, vllm: bool, timeout: int = 20):
     notes = []
     missing = [f for f in REQUIRED_FILES if f not in names]
     if not (INDEX_FILES & names):
-        missing.append("safetensors 权重缺失")
+        missing.append("safetensors weights missing")
     need_quant = vllm and quant in VLLM_QUANT
     if need_quant:
         if "quantize_config.json" in names:
@@ -65,7 +66,7 @@ def check_repo(repo_id: str, quant: str | None, vllm: bool, timeout: int = 20):
             if qm == quant or (qm in VLLM_QUANT and quant == "4bit"):
                 notes.append(f"quant=config.json:quantization_config({qm})")
             else:
-                missing.append(f"量化声明缺失(quantize_config.json 或 config.json 内 {quant})")
+                missing.append(f"quantization declaration missing (quantize_config.json or {quant} inside config.json)")
     return missing, len(names), notes
 
 
@@ -80,13 +81,13 @@ def main() -> int:
     for name, m in cfg.get("models").items():
         repo = m.get("path", "")
         if not repo or "/" not in repo or os.path.isdir(repo):
-            print(f"{name:12} local/local dir 跳过（{repo}）")
+            print(f"{name:12} local/local dir skipped ({repo})")
             continue
         quant = m.get("quantization")
         vllm = m.get("backend") == "vllm"
         try:
             missing, nfiles, notes = check_repo(repo, quant, vllm, timeout=args.timeout)
-        except Exception as exc:  # 401/404/网络等
+        except Exception as exc:  # 401/404/network etc.
             missing = [f"{type(exc).__name__}: {str(exc)[:120]}"]
             nfiles = 0
             notes = []
@@ -100,9 +101,9 @@ def main() -> int:
             print(f"    missing: {mm}")
     print("-" * 90)
     if fail:
-        print(f"[verify] FAIL={fail}：先处理 FAIL 条目再跑 preflight（见 models.yaml 顶部可用仓库说明）")
+        print(f"[verify] FAIL={fail}: fix the FAIL entries before the preflight (see the usable-repository notes at the top of models.yaml)")
         return 1
-    print("[verify] ALL PASS：可直接 preflight / 全量运行。")
+    print("[verify] ALL PASS: ready for the preflight / full runs.")
     return 0
 
 

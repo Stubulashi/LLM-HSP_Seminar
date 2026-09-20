@@ -1,10 +1,10 @@
-"""本地 HuggingFace 模型（scaf.md 6.1 L705-755，裁决 C1：统一 HFModel 覆盖全部模型）。
+"""Local HuggingFace model (scaf.md 6.1 L705-755; ruling C1: one HFModel covers all models).
 
-config 为 config/models.yaml 中单模型 dict（含 path/architecture/backend/size/training）。
-可选字段（依据缺失，见 docs/decisions.md）：
-    dtype: bfloat16（默认）| float32
-    quantization: none（默认）| 8bit | 4bit（需 bitsandbytes）
-    max_memory: 设备显存预算（dict 形式，缺省按 device_map auto）
+config is the single-model dict from config/models.yaml (path/architecture/backend/size/training).
+Optional fields (basis missing; see docs/decisions.md):
+    dtype: bfloat16 (default) | float32
+    quantization: none (default) | 8bit | 4bit (needs bitsandbytes)
+    max_memory: device memory budget (dict form; defaults to device_map auto)
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ from models.base_model import BaseModel
 
 
 def _model_load_kwargs(config: dict):
-    """按单模型配置生成 from_pretrained 的关键字参数（纯函数，便于单测）。
+    """Build the from_pretrained keyword arguments from a single-model config (pure function, easy to unit-test).
 
-    - quantization none 走 torch_dtype；4bit/8bit 走 BitsAndBytesConfig
-      （transformers Qwen2 不认顶层 load_in_4bit/load_in_8bit，须经 quantization_config）。
+    - quantization none uses torch_dtype; 4bit/8bit uses BitsAndBytesConfig
+      (transformers does not accept top-level load_in_4bit/load_in_8bit for Qwen2; it must go through quantization_config).
     """
     import torch
     from transformers import BitsAndBytesConfig
@@ -33,7 +33,7 @@ def _model_load_kwargs(config: dict):
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
         )
-        # bnb 自行决定 torch_dtype，避免同时传冲突
+        # let bnb decide torch_dtype on its own; passing it here would conflict
     else:
         dtype = config.get("dtype", "bfloat16")
         if dtype:
@@ -66,10 +66,10 @@ class HFModel(BaseModel):
             raise RuntimeError(f"model {path} requires GPU but CUDA unavailable")
 
     def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 512) -> str:
-        """tokenize → inference → decode（pipeline.md L771-779 / scaf.md L725-744）。
+        """tokenize → inference → decode (pipeline.md L771-779 / scaf.md L725-744).
 
-        temperature <= 0 时按贪心解码（do_sample=False），保证可复现/用作 judge 的确定性；
-        否则按采样（do_sample=True）。transformers 不允许 temperature=0 与 do_sample=True 并用。
+        temperature <= 0 means greedy decoding (do_sample=False), which keeps runs reproducible and the judge deterministic;
+        otherwise sampling is used (do_sample=True). transformers does not allow temperature=0 together with do_sample=True.
         """
         import torch
 
@@ -89,7 +89,7 @@ class HFModel(BaseModel):
         return self.tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
 
     def unload(self) -> None:
-        """删除模型并清空 CUDA 缓存（scaf.md L748-754 增强版）。"""
+        """Delete the model and empty the CUDA cache (an enhanced version of scaf.md L748-754)."""
         import torch
 
         del self.model

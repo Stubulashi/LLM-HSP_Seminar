@@ -1,7 +1,7 @@
-"""标注管线（pipeline.md 六节 Step 1-5 / scaf.md 5 节）。
+"""Annotation pipeline (pipeline.md section 6, steps 1-5 / scaf.md section 5).
 
-run_annotation_pipeline：load → split → annotate → validate → save。
-task 归属（裁决 C11）：由调用方显式传入（CLI --task 或目录名推断）。
+run_annotation_pipeline: load → split → annotate → validate → save.
+Task assignment (ruling C11): passed in explicitly by the caller (CLI --task, or inferred from the directory name).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from annotation.validator import AnnotationValidator
 
 
 def infer_task(input_dir: str | Path) -> str | None:
-    """尝试从目录名推断任务（裁决 C11 的目录推断路径）。"""
+    """Try to infer the task from the directory name (the directory-inference path of ruling C11)."""
     name = Path(input_dir).name
     return name if name in TASKS else None
 
@@ -29,9 +29,9 @@ def run_annotation_pipeline(
     logger=None,
     limit: int | None = None,
 ) -> list[dict]:
-    """对 input_dir 下全部 *.txt 运行标注管线，返回成功标注列表。
+    """Run the annotation pipeline over every *.txt in input_dir; returns the list of successful annotations.
 
-    model 仅需实现 generate(prompt) -> str（AnnotationAgent 的低耦合要求）。
+    model only needs to implement generate(prompt) -> str (the low-coupling requirement of AnnotationAgent).
     """
     if task is None:
         task = infer_task(input_dir)
@@ -58,11 +58,11 @@ def run_annotation_pipeline(
             logger.info(f"annotating {story_id}: {len(sentences)} sentences")
 
         data = agent.annotate(sentences)
-        data["id"] = story_id  # 以文件名覆盖 LLM 返回的 id
-        data["task"] = task  # 裁决 C11：task 字段
-        data["reviewed"] = False  # 裁决 C15：初始未审查
+        data["id"] = story_id  # override the LLM-returned id with the file name
+        data["task"] = task  # ruling C11: task field
+        data["reviewed"] = False  # ruling C15: not reviewed initially
 
-        ok, errors = validator.validate(data)  # 防御性二次校验
+        ok, errors = validator.validate(data)  # defensive second validation
         if not ok:
             raise AnnotationError(f"{story_id}: {'; '.join(errors)}")
 

@@ -1,8 +1,8 @@
-"""全链路冒烟测试（补充约定）：1 story × 1 model × 1 repeat。
+"""Full-pipeline smoke test (supplementary convention): 1 story × 1 model × 1 repeat.
 
-流程：annotate（mock）→ review（自动接受）→ run（mock）→ analyze。
-断言四类产物：annotated JSON、raw response、metrics CSV、PNG。
-用法：python scripts/smoke_test.py
+Flow: annotate (mock) → review (auto-accept) → run (mock) → analyze.
+Asserts four kinds of artifacts: annotated JSON, raw response, metrics CSV, PNG.
+Usage: python scripts/smoke_test.py
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# 脚本模式运行时确保项目根在 sys.path（python scripts/smoke_test.py）
+# make sure the project root is on sys.path when run as a script (python scripts/smoke_test.py)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
@@ -24,7 +24,7 @@ def main() -> int:
     dm = DataManager()
     root = Path.cwd()
 
-    # 1. annotate（mock 模型，示例故事 fp001 已在 data/raw_stories/faux_pas/）
+    # 1. annotate (mock model; the sample story fp001 already sits in data/raw_stories/faux_pas/)
     print("== Step 1: annotate ==")
     rc = cli(["annotate", "--mock", "--task", "faux_pas",
               "--input", "data/raw_stories/faux_pas"])
@@ -32,13 +32,13 @@ def main() -> int:
     annotated = root / "data/annotated/fp001.json"
     assert annotated.exists(), "annotated JSON missing"
 
-    # 2. review（自动接受，无修改）
+    # 2. review (auto-accepted, no changes)
     print("== Step 2: review ==")
     data = review_annotation("fp001", dm, input_fn=lambda _: "n", logger=logger)
     assert data.get("reviewed") is True, "reviewed flag missing"
     assert data["task"] == "faux_pas"
 
-    # 3. run（mock 模型，1 重复）
+    # 3. run (mock model, 1 repetition)
     print("== Step 3: run ==")
     rc = cli(["run", "--mock", "--model", "mock7b", "--repetitions", "1"])
     assert rc == 0, "run failed"

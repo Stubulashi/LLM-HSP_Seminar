@@ -1,8 +1,8 @@
-"""可视化（pipeline.md 十一.3 / scaf.md 13 节 L1255-1292，裁决 C12 产物映射）。
+"""Visualisation (pipeline.md 11.3 / scaf.md section 13 L1255-1292; artifact mapping from ruling C12).
 
-- Confidence Curve：各模型逐 step 平均置信度折线（scaf.md L1259-1281）
-- Emergence Distribution：各模型 emergence 分布直方图（L1284-1291）
-- trajectory.png：相邻 step 解释距离曲线（Stability 语义，裁决 C12）
+- Confidence Curve: mean confidence per step for each model (scaf.md L1259-1281)
+- Emergence Distribution: emergence histogram for each model (L1284-1291)
+- trajectory.png: adjacent-step interpretation distance curve (the Stability semantics; ruling C12)
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def plot_confidence(df, out_path: str | Path) -> Path:
-    """df 需含 model / sentence_position / confidence 列。"""
+    """df must have model / sentence_position / confidence columns."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -22,7 +22,7 @@ def plot_confidence(df, out_path: str | Path) -> Path:
     import pandas as pd
     conf_numeric = pd.to_numeric(df.get("confidence"), errors="coerce")
     if df.empty or conf_numeric.dropna().empty:
-        # 全部置信缺失/非数字：输出“无数据”占位，避免 `no numeric data to plot`
+        # all confidences missing/non-numeric: emit a "no data" placeholder instead of `no numeric data to plot`
         fig, ax = plt.subplots()
         ax.text(0.5, 0.5, "no confidence data (missing / non-numeric)",
                 ha="center", va="center")
@@ -46,7 +46,7 @@ def plot_confidence(df, out_path: str | Path) -> Path:
 
 
 def plot_emergence(df, out_path: str | Path) -> Path:
-    """df 需含 model / emergence_point 列；无 emergence 的记 NaN。"""
+    """df must have model / emergence_point columns; runs without emergence are NaN."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -54,7 +54,7 @@ def plot_emergence(df, out_path: str | Path) -> Path:
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if df.empty or df["emergence_point"].dropna().empty:
-        # 无任何 emergence 数据：输出空图占位
+        # no emergence data at all: emit an empty-figure placeholder
         fig, ax = plt.subplots()
         ax.text(0.5, 0.5, "no emergence data", ha="center", va="center")
         ax.set_title("Mean emergence point by model")
@@ -77,7 +77,7 @@ def plot_emergence(df, out_path: str | Path) -> Path:
 
 def plot_trajectory(stability_by_model: dict[str, list[tuple[int, float]]],
                     out_path: str | Path) -> Path:
-    """相邻 step 距离曲线（裁决 C12：Stability 语义 → trajectory.png）。"""
+    """Adjacent-step distance curve (ruling C12: the Stability semantics → trajectory.png)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

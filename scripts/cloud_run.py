@@ -1,25 +1,26 @@
-"""云端/大卡批量运行器：以"锁步轮次"方式并发跑全部 (model×task×story×rep) 增量实验。
+"""Cloud / large-GPU batch runner: runs all (model × task × story × rep) incremental experiments concurrently in "lock-step rounds".
 
-为什么比顺序 main.py run 快：每轮把所有仍在进行中的 story 的同一相对步合成一个批次，
-一次 vLLM generate_batch（continuous batching）压满一张 80/90 系显卡；配合
-enable_prefix_caching，同 story 相邻轮共享前缀，吞吐可提升一个量级。
+Why it is faster than sequential main.py run: each round batches the same relative step of every
+story still in progress into one vLLM generate_batch call (continuous batching), saturating an
+80/90-series card; together with enable_prefix_caching, adjacent rounds of the same story share
+their prefix, so throughput improves by roughly an order of magnitude.
 
-特性：
-- 断点续跑：已完成 run 跳过；部分 run 按已存行数续跑（逐行 step 追加，不重复不丢）。
-- 确定性：每 (model,story,rep) 固定 job seed，每轮 seed = job_seed + round*7919。
-- OOM：vLLM 显存错误显式转指引并退出码 2，不静默。
+Features:
+- resumable: completed runs are skipped; partial runs resume from the saved line count (step rows are appended; nothing is duplicated or lost).
+- deterministic: every (model, story, rep) has a fixed job seed, and each round uses seed = job_seed + round*7919.
+- OOM: vLLM memory errors are converted to explicit guidance and exit code 2; nothing is silent.
 
-用法（云端，Python 与 vLLM 就绪后）：
-    python scripts/cloud_run.py                    # 默认全矩阵：qwen7b,deepseek7b,qwen14b,deepseek14b,deepseek32b
-    python scripts/cloud_run.py --models qwen7b    # 覆盖为子集（preflight 用）
+Usage (on the cloud, with Python and vLLM ready):
+    python scripts/cloud_run.py                    # default full matrix: qwen7b,deepseek7b,qwen14b,deepseek14b,deepseek32b
+    python scripts/cloud_run.py --models qwen7b    # restrict to a subset (for preflight)
     python scripts/cloud_run.py --stories fb001,fb002
-    # 补跑/续跑同一命令即可；完整 run 幂等跳过。
+    # rerun / resume with the same command; complete runs are skipped idempotently.
 """
 import argparse, json, os, sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# 保证从任意 cwd 直接运行都能导入仓库根模块（AutoDL 上常直接 python scripts/...）
+# ensure the repo root modules import from any cwd (on AutoDL it is common to run python scripts/... directly)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.config_manager import ConfigManager
@@ -30,7 +31,7 @@ from utils.seeding import job_seed
 
 STEP_SEED_STRIDE = 7919
 
-# 24G 单卡正式全矩阵（RQ1-RQ3）：默认全跑；--models 可覆盖为子集
+# the official 24G single-card full matrix (RQ1-RQ3): all models by default; --models overrides with a subset
 DEFAULT_MODELS = ["qwen7b", "deepseek7b", "qwen14b", "deepseek14b", "deepseek32b"]
 
 
@@ -50,10 +51,10 @@ def _collect_stories(dm: DataManager, tasks, stories, include_unreviewed, logger
         if ann.get("task") not in tasks:
             continue
         if not ann.get("question"):
-            print(f"  [skip] {sid}: 缺 question，未纳入云跑", flush=True)
+            print(f"  [skip] {sid}: no question; not included in the cloud run", flush=True)
             continue
         if ann.get("reviewed") is not True and not include_unreviewed:
-            print(f"  [skip] {sid}: 未 review（加 --include-unreviewed 可纳入）", flush=True)
+            print(f"  [skip] {sid}: not reviewed (pass --include-unreviewed to include it)", flush=True)
             continue
         if stories and sid not in stories:
             continue
@@ -63,7 +64,7 @@ def _collect_stories(dm: DataManager, tasks, stories, include_unreviewed, logger
 
 def run_model_batch(model_name: str, jobs, cfg, dm, builder, model, seed_master,
                     condition: str = "condition_a") -> int:
-    """单模型锁步批量执行。返回完成 runs 数。condition 传给 PromptBuilder（condition_a/b）。"""
+    """Lock-step batch execution for one model. Returns the number of finished runs. condition is passed to PromptBuilder (condition_a/b)."""
     experiment = cfg.get("experiment")
     temperature = experiment["temperature"]
     recorder = ResultRecorder(dm)
@@ -102,7 +103,7 @@ def run_model_batch(model_name: str, jobs, cfg, dm, builder, model, seed_master,
         try:
             texts = model.generate_batch(prompts, seeds=[m["seed"] for m in metas])
         except RuntimeError:
-            raise  # OOM 等显式错误（含 vllm 指引）直接上抛
+            raise  # explicit errors such as OOM (with the vLLM guidance) are re-raised as-is
         for m, text in zip(metas, texts):
             a = m["a"]
             story = a["story"]
@@ -114,7 +115,7 @@ def run_model_batch(model_name: str, jobs, cfg, dm, builder, model, seed_master,
                 "step": sentence["id"],
                 "context": " ".join(s["text"] for s in story["sentences"][: rnd + 1]),
                 "response": text,
-                "confidence": None,  # analysis 回填
+                "confidence": None,  # backfilled by analysis
                 "repetition": a["rep"],
                 "metadata": {
                     "model_version": getattr(model, "path", model_name),
@@ -135,22 +136,22 @@ def run_model_batch(model_name: str, jobs, cfg, dm, builder, model, seed_master,
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default=",".join(DEFAULT_MODELS),
-                    help=f"逗号分隔；默认全矩阵：{','.join(DEFAULT_MODELS)}")
+                    help=f"comma-separated; default full matrix: {','.join(DEFAULT_MODELS)}")
     ap.add_argument("--tasks", default="false_belief,faux_pas,implicature")
-    ap.add_argument("--stories", default=None, help="逗号分隔子集；默认全部")
+    ap.add_argument("--stories", default=None, help="comma-separated subset; default all")
     ap.add_argument("--repetitions", type=int, default=None)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--include-unreviewed", action="store_true",
-                    help="纳入 reviewed!=True 的标注（faux_pas 全部未审）")
+                    help="include annotations with reviewed!=True (all faux_pas ones are unreviewed)")
     ap.add_argument("--condition", default="condition_a",
                     choices=["condition_a", "condition_b"],
-                    help="prompt 条件（默认 condition_a；Condition B=reasoning 提示，proj 可选探究）")
+                    help="prompt condition (default condition_a; Condition B = the reasoning hint, an optional exploration in the proposal)")
     ap.add_argument("--results-dir", default="results",
-                    help="输出根目录；Condition B 请用独立目录（如 results_condB）避免覆盖正式结果")
+                    help="output root directory; for Condition B use a separate directory (e.g. results_condB) so the official results are not overwritten")
     args = ap.parse_args(argv)
 
     cfg = ConfigManager()
-    dm = DataManager(results_dir=args.results_dir)  # 读 data/annotated，写 results_dir/raw
+    dm = DataManager(results_dir=args.results_dir)  # reads data/annotated, writes results_dir/raw
     experiment = dict(cfg.get("experiment"))
     if args.repetitions:
         experiment["repetitions"] = args.repetitions
@@ -162,7 +163,7 @@ def main(argv=None) -> int:
 
     by_task = _collect_stories(dm, tasks, stories, args.include_unreviewed, None)
     if not by_task:
-        print("[cloud_run] 无可用故事（检查 --include-unreviewed / --stories / question 覆盖）")
+        print("[cloud_run] no usable stories (check --include-unreviewed / --stories / question coverage)")
         return 1
     total_planned = sum(len(v) for v in by_task.values()) * experiment["repetitions"]
     print(f"[cloud_run] tasks={len(by_task)} stories={total_planned // max(experiment['repetitions'],1)} "
@@ -177,7 +178,7 @@ def main(argv=None) -> int:
         try:
             model.load()
         except Exception as exc:
-            print(f"[cloud_run] 模型 {model_name} 加载失败：{exc}", flush=True)
+            print(f"[cloud_run] failed to load model {model_name}: {exc}", flush=True)
             return 2
         try:
             jobs = []

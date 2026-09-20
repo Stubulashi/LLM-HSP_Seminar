@@ -1,214 +1,222 @@
-# IPLE — 增量语用理解的 LLM 评估框架
+# IPLE — An Evaluation Framework for Incremental Pragmatic Understanding in LLMs
 
-IPLE（Incremental Pragmatic LLM Evaluation）用来观察大语言模型在逐句接收故事信息的过程中，如何形成、更新和修正对语用含义的理解。运行一篇故事时，实验程序把句子一句一句地交给模型，收集它每一步的判断（当前情境解释、角色意图、0-100 的置信度），再对照关键句、标准答案和人工标注，计算理解在哪个位置出现、推理轨迹稳不稳定、最终回答对不对。
+IPLE (Incremental Pragmatic LLM Evaluation) studies how a large language model builds, updates and revises its interpretation of pragmatic meaning while it receives story information sentence by sentence. For each story the program feeds the model one sentence at a time and records what the model produces at every step: its current interpretation of the situation, its inference about the characters' intentions, and a confidence score from 0 to 100. The step-level records are then compared with the critical sentence, the gold answer and the human-reviewed annotation, so that we can compute where in the story understanding emerges, how stable the reasoning trajectory is, and whether the final answer is correct.
 
-任务覆盖三类语用现象：faux pas（社交失言）、false belief（错误信念）和 implicature（会话含义）。
+The experiments cover three pragmatic phenomena: faux pas, false belief and implicature.
 
-本仓库是研究项目（LLM-HSP Seminar）的核心代码发布版：源码、配置、脚本与测试都在这里；实验数据、报告和归档文件不在仓库内，原因与获取方式见「数据与材料」一节。
+This repository is the core code release of a research project (LLM-HSP Seminar). It contains the source code, the configuration files, the analysis scripts and the tests, together with the experiment outputs produced on the cloud GPU server (`results/` and `results_condB/`). The original story materials are not included, and the bulk archives are kept outside git; see "Data and Materials（数据与材料）".
 
-## 目录结构
+## Repository Layout（目录结构）
 
 ```
-main.py            CLI 入口，分发 setup / annotate / review / run / analyze
-annotation/        标注管线：故事解析、LLM 标注、结果校验、人工审查
-models/            模型层：统一接口 + HuggingFace / vLLM / Mock 实现 + 工厂
-experiment/        实验引擎：prompt 组装、逐句运行、结果记录、任务调度
-analysis/          分析：准确率、涌现、置信度、嵌入、稳定性、统计、LLM judge
-config/            配置：三个 yaml + 配置管理器
-data_manager/      数据读写（原子写）
-utils/             日志、随机种子、环境自检
-visualization/     绘图工具
-scripts/           实验期间的辅助脚本（打包、批跑、评估、统计、绘图等）
-tests/             单元测试
+main.py            CLI entry point (setup / annotate / review / run / analyze)
+annotation/        annotation pipeline: story parsing, LLM annotation, validation, human review
+models/            model layer: one interface with HuggingFace / vLLM / Mock backends, plus a factory
+experiment/        experiment engine: prompt building, step-by-step running, recording, scheduling
+analysis/          metrics: accuracy, emergence, confidence, embeddings, stability, statistics, LLM judge
+config/            configuration: three YAML files and the config manager
+data_manager/      data access with atomic writes
+utils/             logging, seeding, environment self-check
+visualization/     plotting helpers
+scripts/           helper scripts used during the project (packing, batch runs, evaluation, tables, plots)
+tests/             unit tests
+results/           experiment outputs: raw responses, metrics, embeddings, judge caches, logs
+results_condB/     outputs of Condition B (same structure)
 ```
 
-各模块的职责：
+Role of each module:
 
-- **annotation/**：把原始故事文本转成结构化 JSON（逐句功能、关键句、标准答案、问题），用 `annotation_model` 指定的模型跑标注；`validator.py` 检查结构合法性，`human_review.py` 提供人工审查。
-- **models/**：所有模型实现同一个接口（load / generate / unload）。`ModelFactory` 读 `models.yaml` 决定实例化哪个实现、如何量化；`MockModel` 是确定性假模型，用于测试和冒烟。
-- **experiment/**：`PromptBuilder` 按 `prompts.yaml` 组装每一步的输入；`IncrementalRunner` 维护逐句累加的 context 并调用模型；`ResultRecorder` 将每一步的原始响应落盘；`ExperimentScheduler` 生成并执行"模型 × 任务 × 故事 × 重复"的任务矩阵。
-- **analysis/**：`accuracy` / `emergence` / `confidence` / `embedding` / `stability` / `statistics` 分别计算各指标；`judge.py` 提供基于 LLM 的等价判定，替代或补充余弦相似度口径。
-- **config/**：`ConfigManager` 加载并校验三个 yaml，是代码读取配置的唯一入口。
-- **utils/**：统一日志（写入 `logs/iple.log`）、随机种子设置（保证同种子同输出）、`main.py setup` 的环境自检逻辑。
-- **data_manager/**：统一管理 `data/` 与 `results/` 的读写路径；写入走临时文件加替换，避免写中途损坏。
-- **scripts/**：实验期间积累的辅助脚本，按用途分几类：云端打包与执行（`pack_for_cloud.py`、`cloud_run.py`、`run_full_class_batch.py`）、模型与流程验证（`verify_models.py`、`smoke_test.py`）、judge 相关（`judge_sample.py`、`judge_analyze.py`、`run_judge_on_pool.py`、`assess_judges.py`）、统计与报表（`mixed_effects.py`、`confidence_analysis.py`、`build_report_tables_v2.py`、`calibrate_cosine_threshold.py` 等）、绘图（`plot_*.py`）、报告草稿同步（`sync_report_draft*.py`）。这些脚本面向项目内部流程，单独使用时需要按实际情况调整输入输出路径的参数。
-- **tests/**：见「测试」一节。
+- annotation/: turns raw story text into structured JSON (per-sentence function, critical sentence, gold answer, question) and runs the LLM annotation with the model named by `annotation_model`; `validator.py` checks structural validity and `human_review.py` provides the interactive review.
+- models/: every backend implements the same interface (load / generate / unload). `ModelFactory` reads `models.yaml` and decides which backend to instantiate and how to quantize; `MockModel` is a deterministic stub used by the tests and smoke runs.
+- experiment/: `PromptBuilder` assembles the per-step input from `prompts.yaml`; `IncrementalRunner` maintains the growing context and calls the model step by step; `ResultRecorder` persists every raw response; `ExperimentScheduler` creates and executes the "model × task × story × repetition" job matrix.
+- analysis/: `accuracy` / `emergence` / `confidence` / `embedding` / `stability` / `statistics` compute the individual metrics; `judge.py` implements the LLM equivalence judge, an alternative (or complement) to cosine similarity.
+- config/: `ConfigManager` loads and validates the three YAML files; it is the only entry point through which the code reads configuration.
+- utils/: unified logging (to `logs/iple.log`), seeding (same seed, same output), and the environment self-check used by `python main.py setup`.
+- data_manager/: centralises the read/write paths under `data/` and `results/`; writes go through a temporary file and a replace step, so an interrupted run cannot corrupt existing files.
+- scripts/: helper scripts accumulated during the project. Rough groups: cloud packaging and batch execution (`pack_for_cloud.py`, `cloud_run.py`, `run_full_class_batch.py`), model and pipeline verification (`verify_models.py`, `smoke_test.py`), judge tooling (`judge_sample.py`, `judge_analyze.py`, `run_judge_on_pool.py`, `assess_judges.py`), statistics and report tables (`mixed_effects.py`, `confidence_analysis.py`, `build_report_tables_v2.py`, `calibrate_cosine_threshold.py` and more), plotting (`plot_*.py`), and report draft synchronisation (`sync_report_draft*.py`). They were written for the internal workflow; when used standalone, adjust their input/output paths to your own layout.
+- tests/: see "Tests（测试）".
 
-## 运行环境与依赖
+## Requirements and Installation（运行环境与依赖）
 
-需要 Python 3.10 及以上（`main.py setup` 会检查版本）。依赖清单在 `requirements.txt`：
+Python 3.10 or newer is required (`main.py setup` checks the version). The dependencies are listed in `requirements.txt`:
 
-| 包 | 用途 |
+| Package | Purpose |
 |---|---|
-| torch / transformers / accelerate / bitsandbytes | 本地 HuggingFace 后端推理与 4bit/8bit 量化 |
-| vllm | GPU 上跑大模型档（7B/14B/32B）的推理后端 |
-| sentence-transformers | 默认嵌入模型 all-MiniLM-L6-v2，用于余弦口径的 accuracy |
-| pandas / statsmodels | 指标汇总与混合效应统计 |
-| pyyaml / typer / tqdm / pytest | 配置、命令行、进度条、测试 |
+| torch / transformers / accelerate / bitsandbytes | local HuggingFace inference and 4-bit/8-bit quantization |
+| vllm | inference backend for the large model tiers (7B/14B/32B) on GPU |
+| sentence-transformers | the default embedding model all-MiniLM-L6-v2, used by the cosine-based accuracy |
+| pandas / statsmodels | metric aggregation and mixed-effects statistics |
+| pyyaml / typer / tqdm / pytest | configuration, CLI, progress bars, testing |
 
-安装与自检：
+Installation and self-check:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1        # Linux / macOS 用 source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1        # on Linux / macOS use: source .venv/bin/activate
 pip install -r requirements.txt
 python main.py setup
 ```
 
-`setup` 会逐项输出 [OK] / [WARN]：Python 版本、依赖包、GPU 可用性（没有 CUDA 会降级提醒），并创建 `data/raw_stories`、`data/annotated`、`results/raw`、`results/processed`、`results/embeddings`、`logs` 目录，然后加载配置。
+`setup` prints one [OK] / [WARN] line per check (Python version, dependencies, GPU availability; a machine without CUDA gets a warning and falls back to CPU), creates the `data/raw_stories`, `data/annotated`, `results/raw`, `results/processed`, `results/embeddings` and `logs` directories, and then loads the configuration.
 
-两点说明：`vllm` 只在用 GPU 跑大模型档时才需要，它对本机 torch 版本有强约束，没有 GPU 的环境可以删掉这一行再安装，不影响小模型档和全部测试；模型权重首次使用时从 HuggingFace 下载并缓存在本地，之后离线可用。
+Two notes. `vllm` is only needed to run the large model tiers on a GPU, and it pins the local torch version tightly; on a machine without a GPU you can delete that line before installing and nothing else is affected. Model weights are downloaded from HuggingFace on first use and cached locally afterwards.
 
-## 配置说明
+## Configuration（配置说明）
 
-`config/` 下三个 yaml 是全部实验参数的来源，代码里没有散落的魔法数字。
+The three YAML files under `config/` are the single source of all experiment parameters; there are no scattered magic numbers in the code.
 
 ### models.yaml
 
-模型的唯一事实源，"加一个模型"等于在这里加一段配置，实验代码不用改。每个条目的字段：
+The single source of truth for models: "adding a model" means adding one entry here, with no changes to the experiment code. Fields per entry:
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| family / path | 家族名与 HuggingFace 仓库 ID |
-| backend | `huggingface`（本地推理）或 `vllm`（GPU 高吞吐） |
-| quantization | none / 4bit / 8bit / awq / gptq / fp8；vLLM 要求预量化权重 |
-| dtype | bfloat16 / float16（AWQ 只支持 float16） |
-| size / training | 统计口径用（模型规模、instruction / reasoning） |
-| gpu_memory_utilization / max_model_len / max_num_seqs / enable_prefix_caching | vLLM 专用旋钮，显存不够时优先下调前三项 |
+| family / path | model family and HuggingFace repository id |
+| backend | `huggingface` (local) or `vllm` (high-throughput GPU) |
+| quantization | none / 4bit / 8bit / awq / gptq / fp8; vLLM requires pre-quantized weights |
+| dtype | bfloat16 / float16 (AWQ supports float16 only) |
+| size / training | used for statistics (model size, instruction / reasoning) |
+| gpu_memory_utilization / max_model_len / max_num_seqs / enable_prefix_caching | vLLM knobs; lower the first three when GPU memory runs short |
 
-预置条目有：`qwen05b`、`qwen15b`（本地小模型，1.5B 用 4bit 量化）、`qwen7b`、`qwen14b`、`qwen32b`、`deepseek7b`、`deepseek14b`、`deepseek32b`（vLLM + AWQ），以及对照用的 `qwen14b_bf16`、`deepseek14b_bf16`、`qwen05b_vllm`、`qwen15b_vllm`。
+Predefined entries: `qwen05b`, `qwen15b` (local small models; 1.5B runs with 4-bit quantization), `qwen7b`, `qwen14b`, `qwen32b`, `deepseek7b`, `deepseek14b`, `deepseek32b` (vLLM + AWQ), plus the comparison entries `qwen14b_bf16`, `deepseek14b_bf16`, `qwen05b_vllm`, `qwen15b_vllm`.
 
 ### experiment.yaml
 
-- `experiment` 段：`seed_master`（母种子）、`temperature`、`max_tokens`、`repetitions`（每个任务重复几次）、`annotation_model`（标注用的模型键，默认 `qwen7b`）。
-- `scoring` 段：`method`（`embedding_similarity` / `local_judge` / `api_judge`）、`judge_provider`（`local` / `deepseek` / `kimi`）、`threshold`（余弦阈值，只对 embedding 模式生效）、`embedding_model`（默认 `sentence-transformers/all-MiniLM-L6-v2`）。
+- `experiment`: `seed_master`, `temperature`, `max_tokens`, `repetitions`, and `annotation_model` (the model key used for annotation; default `qwen7b`).
+- `scoring`: `method` (`embedding_similarity` / `local_judge` / `api_judge`), `judge_provider` (`local` / `deepseek` / `kimi`), `threshold` (cosine threshold, embedding mode only), and `embedding_model` (default `sentence-transformers/all-MiniLM-L6-v2`).
 
 ### prompts.yaml
 
-- `prompt_version`：写进实验记录的版本号。
-- `conditions`：`condition_a` / `condition_b` 两套系统提示与起手模板（后者是"分析理解如何改变"的变体）。
-- `tasks`：`default` / `false_belief` / `faux_pas` / `implicature` 四种答题模板，统一要求置信度放在最后一行。
-- `annotation`：标注用的结构化 prompt。
+- `prompt_version`: the version string recorded with every run.
+- `conditions`: system prompts and opening templates for `condition_a` / `condition_b` (the latter adds the "analyse carefully why your interpretation changes" instruction).
+- `tasks`: answer templates for `default` / `false_belief` / `faux_pas` / `implicature`; all require the confidence line to be the last line of the reply.
+- `annotation`: the structured prompt used for annotation.
 
-### .env（不随仓库分发）
+### .env (not distributed with the repository)
 
-`api_judge` 模式需要 API 密钥，程序从项目根目录的 `.env` 读取（文件本身已被忽略，不要提交）：
+The `api_judge` mode needs an API key, read from a `.env` file in the project root (the file is git-ignored; never commit it):
 
 ```
 DEEPSEEK_API_KEY=your-key
-DEEPSEEK_BASE_URL=https://api.deepseek.com    # 可省略，用默认值
-DEEPSEEK_MODEL=deepseek-chat                   # 可省略，用默认值
-KIMI_API_KEY=your-key                          # 使用 kimi 供应商时
+DEEPSEEK_BASE_URL=https://api.deepseek.com    # optional, defaults shown
+DEEPSEEK_MODEL=deepseek-chat                   # optional, defaults shown
+KIMI_API_KEY=your-key                          # when using the kimi provider
 KIMI_BASE_URL=https://api.moonshot.cn/v1
 KIMI_MODEL=moonshot-v1-8k
 ```
 
-密钥缺失或请求失败时程序会直接报错，不会静默降级。
+A missing key or a failed request raises an error immediately; nothing degrades silently.
 
-## 命令行用法
+## Command-Line Usage（命令行用法）
 
-| 命令 | 说明 |
+| Command | Description |
 |---|---|
-| `python main.py setup` | 环境自检并创建数据目录 |
-| `python main.py annotate [--input 目录] [--task 任务] [--mock]` | 对原始故事跑标注，输出到 `data/annotated/*.json`；任务默认从输入目录名推断 |
-| `python main.py review <story_id>` | 交互式人工审查标注（可修改句子功能、标准答案、关键句），完成后打上 reviewed 标记 |
-| `python main.py run --model 模型键 [--task 任务] [--stories 列表] [--repetitions N] [--seed N] [--mock]` | 增量实验；只处理 reviewed 的故事；结果写入 `results/raw/模型/任务/故事/runN.json` |
-| `python main.py analyze [--scoring-method 口径] [--judge-provider 供应商] [--results-dir 目录]` | 计算指标，CSV 输出到 `results/processed/` |
+| `python main.py setup` | environment self-check and directory creation |
+| `python main.py annotate [--input DIR] [--task T] [--mock]` | run the annotation pipeline on raw stories, output to `data/annotated/*.json`; the task defaults to the input directory name |
+| `python main.py review <story_id>` | interactive human review (sentence functions, gold answer, critical sentence); marks the story as reviewed |
+| `python main.py run --model KEY [--task T] [--stories LIST] [--repetitions N] [--seed N] [--mock]` | run the incremental experiment; only reviewed stories are processed; results go to `results/raw/<model>/<task>/<story>/runN.json` |
+| `python main.py analyze [--scoring-method M] [--judge-provider P] [--results-dir DIR]` | compute the metrics; CSVs are written to `results/processed/` |
 
-几个典型用法：
+Typical invocations:
 
 ```powershell
-# 标注 faux_pas 任务的全部原始故事
+# annotate every raw story of the faux_pas task
 python main.py annotate --input data/raw_stories/ --task faux_pas
 
-# 审查一篇标注
+# review one annotation
 python main.py review fp001
 
-# 跑增量实验（3 次重复取 experiment.yaml 的默认值，也可用 --repetitions 覆盖）
+# run the incremental experiment (3 repetitions by default from experiment.yaml; --repetitions overrides)
 python main.py run --model qwen7b --task faux_pas --stories fp001,fp002
 
-# 默认余弦口径分析
+# default cosine-based analysis
 python main.py analyze
 
-# 论文口径：DeepSeek API judge（需要 .env 密钥）
+# paper configuration: DeepSeek API judge (needs the keys in .env)
 python main.py analyze --scoring-method api_judge --judge-provider deepseek
 
-# Condition B 的结果目录
+# Condition B results directory
 python main.py analyze --results-dir results_condB
 ```
 
-`--mock` 是不加载真实模型的测试设施：`annotate`、`run` 都可以用 MockModel 走通整条链路，适合在没有 GPU、没有模型权重的机器上做冒烟。
+`--mock` is a test facility that avoids loading real models: both `annotate` and `run` can go through the full pipeline with the MockModel, which is handy for smoke tests on machines without a GPU or model weights.
 
-## 数据与材料
+## Data and Materials（数据与材料）
 
-仓库不含实验数据，原因有两条：体积（原始响应、嵌入和归档合计数百 MB 到 1 GB）和授权（FauxPas 材料只允许在研究内部使用，不能随公开仓库分发）。具体不包含：
+This repository keeps the experiment outputs but not the source story materials. The reasons are the same as during the project: the original materials (the Faux Pas items for example) are for internal research use only and must not be redistributed, while the outputs here were produced by our own program running on the AutoDL GPU server.
 
-- `data/`：原始故事、标注 JSON、人工等价判定子集；
-- `results/`：原始响应、指标 CSV、嵌入文件；
-- `datasets/`：FauxPas、OpenToM、SwordsmanImp 三个数据集的素材；
-- `docs/`：报告、图表与工程决策记录；
-- `logs/` 与云端备份归档。
+Tracked in this repository:
 
-完整归档文件 `cloud_full_final.tar.gz`（100,254,135 字节，72,719 个条目）包含：config、data（annotated 280 + manual_equivalence 4）、results（raw 6770、processed、embeddings 44,064）和 results_condB（raw 2520、embeddings 15,831）。
+- `results/raw/` — 6,770 raw response files of Condition A (one file per story × repetition, each holding the per-step records);
+- `results/processed/`, `results/processed_judge/`, `results/processed_cosine_4200/`, `results/processed_judge_official/`, `results/processed_judge_condB/` — metric CSVs, figures and judge caches;
+- `results/embeddings/` — 44,064 trajectory embedding files;
+- `results_condB/` — the same kinds of outputs for Condition B (2,520 raw files, 15,831 embeddings, processed metrics);
+- `results/logs/` — the four statistics logs (`logs_confidence.txt`, `logs_confidence_condB.txt`, `logs_mixed_effects.txt`, `logs_stability_position.txt`).
 
-- 下载地址：（待补充：网盘或 GitHub Release 链接）
-- 校验方式（下载后在所在目录执行）：
+Not tracked, and why:
+
+- `data/` and `datasets/` — the original story materials and dataset copies; internal research use only, not redistributed;
+- the bulk archives below (they also contain copies of the annotated data);
+- local run logs and caches.
+
+The complete archive is `cloud_full_final.tar.gz` (100,254,135 bytes, 72,719 entries): config, data (annotated 280 + manual_equivalence 4), results (raw 6770, processed, embeddings 44,064) and results_condB (raw 2520, embeddings 15,831). It is delivered outside git:
+
+- Download: (to be filled in — cloud drive or GitHub Release link)
+- Verification (run in the directory containing the archive):
 
 ```powershell
 certutil -hashfile cloud_full_final.tar.gz MD5
-# 期望：adb134917178008bfb2cb9d996724eb6
+# expected: adb134917178008bfb2cb9d996724eb6
 certutil -hashfile cloud_full_final.tar.gz SHA256
-# 期望：82c72d837307d06e334fc252fda4bd62c2b8a56176fade2092aa15711d01a2b5
+# expected: 82c72d837307d06e334fc252fda4bd62c2b8a56176fade2092aa15711d01a2b5
 ```
 
-- 解包：`tar -xzf cloud_full_final.tar.gz -C <目标目录>`，顶层是 `config/`、`data/`、`results/`、`results_condB/` 四个目录。
+- Unpacking: `tar -xzf cloud_full_final.tar.gz -C <target>`; the top level contains `config/`, `data/`, `results/` and `results_condB/`.
 
-归档内含 FauxPas 衍生数据，只可按研究内部用途传递，不要公开发布或再分发。
-
-另外还有一个小体积的云端工作包 `HSP_cloud.zip`（代码 + 标注数据，用于上传到 GPU 机器跑批量实验），随时可以本地重新生成：
+The archive contains material-derived data and is for internal research use; do not publish or redistribute it. For the same reason the packing snapshot `cloud_backup_final.zip` (118 MB) stays off git. A small cloud work package, `HSP_cloud.zip` (code + annotated data for batch runs on a GPU machine), can be regenerated at any time:
 
 ```powershell
 python -X utf8 scripts/pack_for_cloud.py
 ```
 
-上传后在服务器上解压，用 `scripts/cloud_run.py` 执行（支持小规模 preflight 与全量运行）。
+Upload the zip to the server, unpack it there and run `scripts/cloud_run.py` (it supports a small preflight mode and a full run).
 
-供对照的实验规模：280 篇故事 × 10 个模型档 × 3 次重复；正式 runs 9290（Condition A 6770、Condition B 2520），judge 判定 9290/9290。
+For reference, the experiment scale: 280 stories × 10 model tiers × 3 repetitions; 9,290 official runs (6,770 for Condition A, 2,520 for Condition B), with 9,290/9,290 judge decisions.
 
-## 复现步骤
+## Reproducing the Results（结果复现）
 
-复现需要 Python 环境和数据两部分。数据受限，所以完整复现要先拿到归档或自备符合授权的故事文本。
+Reproduction needs two things: the Python environment and the data. Because the source materials are restricted, a full end-to-end reproduction starts from an archive copy, or from stories you are allowed to use.
 
-从原始故事开始（标注链路）：
+From raw stories (the annotation path):
 
-1. 安装依赖并运行 `python main.py setup`；
-2. 把原始故事按任务放进 `data/raw_stories/<任务名>/`；
-3. `python main.py annotate --input data/raw_stories/ --task <任务名>`；
-4. `python main.py review <story_id>` 人工确认每篇标注（未审查的故事不会进入实验）；
-5. `python main.py run --model <模型键> [--task/--stories/--repetitions]`；
-6. `python main.py analyze`，需要论文口径则加 `--scoring-method api_judge --judge-provider deepseek`（自备密钥）。
+1. install the dependencies and run `python main.py setup`;
+2. put the raw stories under `data/raw_stories/<task>/`;
+3. `python main.py annotate --input data/raw_stories/ --task <task>`;
+4. `python main.py review <story_id>` for every story (unreviewed stories never enter the experiment);
+5. `python main.py run --model <key> [--task/--stories/--repetitions]`;
+6. `python main.py analyze`, adding `--scoring-method api_judge --judge-provider deepseek` for the paper configuration (bring your own key).
 
-使用归档数据（跳过标注）：
+From the archive (skipping annotation):
 
-1. 解包归档，把 `data/annotated/` 放到项目的 `data/annotated/`；
-2. 同样从 `setup` 开始，随后直接 `run`／`analyze`；
-3. 本地 4GB 显存环境可以跑 `qwen05b`、`qwen15b` 两档小模型；大模型档需要 GPU 服务器加 vLLM。
+1. unpack the archive and place its `data/annotated/` into the project's `data/annotated/`;
+2. still start with `setup`, then go straight to `run` / `analyze`;
+3. on a machine with 4 GB of GPU memory you can run the `qwen05b` and `qwen15b` tiers; the large tiers need a GPU server with vLLM.
 
-## 测试
+## Tests（测试）
 
-在项目根目录执行：
+Run from the project root:
 
 ```powershell
 python -m pytest tests/ -q
 ```
 
-6 个测试文件分别覆盖：指标计算与嵌入缓存（test_analysis）、故事解析与标注格式（test_annotation）、实验引擎与调度（test_experiment）、judge 输出解析与缺密钥报错（test_judge）、模型工厂分发（test_model_factory）、同种子输出一致性与"加模型不改代码"的扩展性（test_reproducibility）。
+The six test files cover: metric computation and embedding caching (test_analysis), story parsing and annotation format (test_annotation), the experiment engine and scheduler (test_experiment), judge output parsing and missing-key errors (test_judge), model factory dispatch (test_model_factory), and same-seed reproducibility plus the "add a model without touching code" extension path (test_reproducibility).
 
-测试用 MockModel 和哈希嵌入（HashEmbedder）覆盖主要链路，不加载真实模型权重，也不需要 GPU，普通 CPU 环境即可运行。
+The tests exercise the main pipeline with the MockModel and the hash-based embedder (HashEmbedder), so they load no real model weights and need no GPU; a plain CPU environment is enough.
 
-## 版权、引用与许可
+## Copyright, Citation and Licensing（版权、引用与许可）
 
-- FauxPas 材料（FauxPas_Adult.pdf 原件及由它衍生的故事文本、标注、判定数据和报告内容）仅限研究内部使用，禁止二次分发。本仓库不包含任何 FauxPas 原文或派生内容；通过外部归档获取的数据同样受此限制。
-- OpenToM、SwordsmanImp 等第三方数据集素材不在本仓库内，取用与再分发请遵循各数据集自身的许可。
-- 本仓库未附 LICENSE 文件。代码用于课程研究项目，若要在其他场景引用或复用，请先通过本仓库的 GitHub 页面联系作者。
-- 引用本项目时请注明仓库地址与作者；报告和论文的引用信息以项目正式报告为准。
+- The Faux Pas materials (the original PDF and the story texts) are for internal research use only and must not be redistributed. This repository does not include those source materials. The experiment outputs under `results/` and `results_condB/` were produced by our own runs and are kept here as a record of the research results; note that some records (for example the `context` field in `results/raw/`) quote the story texts.
+- Third-party dataset materials (OpenToM, SwordsmanImp and others) are not part of this repository; their use and redistribution follow the licence of each dataset.
+- This repository ships without a LICENSE file. The code was written for a course research project; if you want to reuse it elsewhere, please contact the author through the GitHub page of this repository.
+- When citing this project, please refer to the repository URL and the author; the citation information of the report and paper follows the official project documents.

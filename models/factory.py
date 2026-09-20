@@ -1,8 +1,9 @@
-"""模型工厂（scaf.md 6.2 L758-796，裁决 C4/C14）。
+"""Model factory (scaf.md 6.2 L758-796; rulings C4/C14).
 
-按 config 的 backend 字段分发（huggingface/api），禁止 `if model=="qwen"` 式硬编码；
-同进程模型缓存：同一模型只 load 一次，unload 后清除（供 scheduler 复用）。
-APIModel 延后实现（禁止事项 4）。
+Dispatches on the backend field of the config (huggingface/api); hard-coded checks like
+`if model=="qwen"` are forbidden. In-process model cache: each model is loaded only once,
+and cleared on unload (so the scheduler can reuse it).
+APIModel is deferred (forbidden item 4).
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ class ModelFactory:
         self._instances: dict[str, BaseModel] = {}
 
     def create(self, model_name: str) -> BaseModel:
-        """创建（或复用缓存中的）模型实例，不自动 load。"""
+        """Create (or reuse a cached) model instance; does not load automatically."""
         if model_name in self._instances:
             return self._instances[model_name]
 
@@ -31,7 +32,7 @@ class ModelFactory:
             instance = VLLMModel(model_cfg)
         elif backend == "api":
             raise NotImplementedError(
-                f"backend 'api' for {model_name} 延后实现（docs/decisions.md 禁止事项 4）"
+                f"backend 'api' for {model_name} is deferred (forbidden item 4 in docs/decisions.md)"
             )
         else:
             raise ConfigError(f"unknown backend {backend!r} for model {model_name!r}")
@@ -40,7 +41,7 @@ class ModelFactory:
         return instance
 
     def unload_all(self) -> None:
-        """卸载全部已加载模型并清空缓存。"""
+        """Unload every loaded model and clear the cache."""
         for instance in self._instances.values():
             instance.unload()
         self._instances.clear()

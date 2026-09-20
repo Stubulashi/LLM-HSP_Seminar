@@ -1,4 +1,4 @@
-"""analysis 包：分析评估（pipeline.md 十一节 / scaf.md 10-12 节，裁决 C1/C12）。"""
+"""analysis package: evaluation and analysis (pipeline.md section 11 / scaf.md sections 10-12; rulings C1/C12)."""
 
 from analysis.accuracy import calculate_accuracy
 from analysis.confidence import extract_confidence, extract_interpretation

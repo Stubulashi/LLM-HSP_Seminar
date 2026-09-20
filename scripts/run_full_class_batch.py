@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
-"""整类(per-class, 非抽样)真实批跑脚本（本机 4GB 用 qwen0.5B，可 resumable）。
+"""Full-class (per-class, non-sampled) real batch-run script (qwen0.5B on the local 4GB machine; resumable).
 
-用法示例：
+Example usage:
     python scripts/run_full_class_batch.py --class faux_pas --model qwen05b --repetitions 1
     python scripts/run_full_class_batch.py --class opentom  --model qwen05b --repetitions 1
     python scripts/run_full_class_batch.py --class swordsmanimp --model qwen05b --repetitions 1
-    ... --analyze  在最后执行 analyze
+    ... --analyze  run analyze at the end
 
-行为：
-- 从 datasets/<cls>/annotated 枚举全部条目 → 全部放置到 data/annotated（reviewed=True，sfp 一并置 True）
-- 调用 main.py run --model <m> --repetitions <n>（不限定 stories，跑该批全部已标记条目）
-  重复调用同一条命令即幂等续跑（完成的 run{N}.json 被 scheduler 跳过）。
-- 可选 --analyze 结束时跑 analyze。
-退出码 0=成功。
+Behaviour:
+- Enumerate every item under datasets/<cls>/annotated → place them all into data/annotated (reviewed=True, including sfp).
+- Call main.py run --model <m> --repetitions <n> (no story filter; runs every placed item of that batch);
+  rerunning the same command resumes idempotently (completed run{N}.json files are skipped by the scheduler).
+- Optional --analyze runs analyze at the end.
+Exit code 0 = success.
 """
 import argparse, json, shutil, io, sys
 from pathlib import Path
@@ -42,12 +42,12 @@ def main():
     src = Path(CLASS_SOURCE[a.klass])
     files = sorted(src.glob("*.json"))
     assert files, f"no annotated under {src}"
-    # 放置
+    # placement
     n_placed = 0
     for f in files:
         d = json.load(open(f, encoding="utf-8"))
         d["reviewed"] = True
-        # id 用文件名（story_id=filename 约定）
+        # use the file name as the id (the story_id = filename convention)
         sid = f.stem
         d["id"] = sid
         outp = Path(DST) / f"{sid}.json"
@@ -63,7 +63,7 @@ def main():
         print("[fail] run rc=", rc)
         return rc
 
-    # 统计 completed run files
+    # count completed run files
     import os
     completed = []
     for root, _, fs in os.walk(f"results/raw/{a.model}"):

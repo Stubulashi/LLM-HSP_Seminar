@@ -1,14 +1,15 @@
-"""Metric 3（Interpretation Revision）逐步距离数值表。
+"""Metric 3 (Interpretation Revision) step-distance numeric tables.
 
-与 analysis/stability.step_distances 完全同口径（extract_interpretation 清洗 +
-EmbeddingService 余弦距离），但把每对相邻 step 的距离落盘为 CSV（论文数值表用）：
-  results/processed/step_distance_detail.csv       每 run 每对相邻距离明细
-  results/processed/step_distance_by_position.csv  模型 × step 的均值（revision 曲线数据）
+Same convention as analysis/stability.step_distances (extract_interpretation cleaning +
+EmbeddingService cosine distance), but every adjacent step-pair distance is written to CSV
+(for the paper's numeric tables):
+  results/processed/step_distance_detail.csv       per-run detail of each adjacent distance
+  results/processed/step_distance_by_position.csv  model × step means (revision-curve data)
 
-用法：
-  python -X utf8 scripts/step_distance_csv.py                        # 正式 results
+Usage:
+  python -X utf8 scripts/step_distance_csv.py                        # official results
   python -X utf8 scripts/step_distance_csv.py --results-dir results_condB
-提示：使用已有 embeddings 缓存（results/embeddings），命中时分钟级完成。
+Note: it reuses the existing embeddings cache (results/embeddings); a cache hit finishes in minutes.
 """
 import argparse, csv, os, sys
 from collections import defaultdict
@@ -26,8 +27,8 @@ from analysis.pipeline import _filter_task_drift, load_records
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--results-dir", default="results")
-    ap.add_argument("--out-dir", default=None, help="默认 <results-dir>/processed")
-    ap.add_argument("--models", default=None, help="逗号分隔；默认取 models.yaml 全部键")
+    ap.add_argument("--out-dir", default=None, help="default <results-dir>/processed")
+    ap.add_argument("--models", default=None, help="comma-separated; defaults to all keys in models.yaml")
     args = ap.parse_args()
     out_dir = args.out_dir or os.path.join(args.results_dir, "processed")
     os.makedirs(out_dir, exist_ok=True)
@@ -46,7 +47,7 @@ def main() -> int:
     records = _filter_task_drift(load_records(args.results_dir), dm)
     records = [r for r in records if r.get("model") in allow]
     if not records:
-        print("[step_distance] 无可用记录")
+        print("[step_distance] no usable records")
         return 1
 
     groups = {}

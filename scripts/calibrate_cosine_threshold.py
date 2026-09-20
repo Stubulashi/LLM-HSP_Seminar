@@ -1,11 +1,9 @@
-"""A5: 用人工等价子集校准余弦阈值（替代固定 0.7），并报告 emergence 定义对比。
+"""A5: calibrate the cosine threshold with the manual equivalence subset (instead of the fixed 0.7) and report the emergence-definition comparison.
 
-对池内各行，human_label(1/0) 与 (cos_sim > t) 的一致性最优 t 即为建议阈值；
-同时给出建议写入位置 config/experiment.yaml `scoring.threshold`。
-Emergence 说明：judge 版 emergence 定义为"首个被 judge 判等价的最小 step"，
-与"首个 cos>t" 的首达一致率由 judge 列（per-step 回填后）评估；此处先给方法框架。
+For each pooled row, the t that maximises the agreement between human_label (1/0) and (cos_sim > t) is the suggested threshold; the suggested location to write it is config/experiment.yaml `scoring.threshold`.
+Emergence note: the judge-based emergence is defined as "the smallest step first judged equivalent"; its agreement with the first cos>t step is assessed from the judge columns (after per-step backfill); this script lays out the method framework first.
 
-用法： python -X utf8 scripts/calibrate_cosine_threshold.py
+Usage: python -X utf8 scripts/calibrate_cosine_threshold.py
 """
 import argparse, csv, os, sys
 
@@ -22,11 +20,11 @@ def main() -> int:
     paired = [(float(r["cos_sim"]), _parse(r.get("human_label")))
               for r in rows if r.get("human_label") not in (None, "", "U")]
     paired = [(c, h) for c, h in paired if h is not None]
-    print(f"[calib] paired(human 1/0 且 cos 可读)={len(paired)}")
+    print(f"[calib] paired (human 1/0 and readable cos)={len(paired)}")
     if not paired:
-        print("  [warn] 尚无人工标注；填完 human_label 后重跑。")
+        print("  [warn] no human labels yet; fill in human_label and rerun.")
         return 0
-    # 扫描阈值
+    # scan thresholds
     best = None
     for tenth in range(0, 1001, 10):  # 0.00..1.00
         t = tenth / 1000.0
@@ -38,14 +36,14 @@ def main() -> int:
     t, m = best
     print(f"[calib] best threshold t={t:.3f} acc={m['acc']:.3f} "
           f"prec={m['prec']:.3f} rec={m['rec']:.3f} kappa={m['kappa']:.3f}")
-    print(f"  -> 若采用，请把 config/experiment.yaml scoring.threshold 改为 {t:.3f}（当前 0.7 为初值）")
-    # 固定 0.7 基线
+    print(f"  -> if adopted, set config/experiment.yaml scoring.threshold to {t:.3f} (0.7 is the initial value)")
+    # fixed 0.7 baseline
     m07 = metrics(hy, [c > 0.7 for c, _ in paired])
-    print(f"[calib] fixed 0.7 acc={m07['acc']:.3f} kappa={m07['kappa']:.3f} (对比用)")
-    # emergence 说明
-    print("[calib] emergence: judge 定义=首个 judge==1 的 step；cos 定义=首个 cos>t 的 step。")
-    print("         在 labels.csv 中按 (model,task,story_id,repetition) 组内用 judge_* 列回填各 step 后，")
-    print("         再比较两种首达是否一致（需 judge 列含 per-step 值）。")
+    print(f"[calib] fixed 0.7 acc={m07['acc']:.3f} kappa={m07['kappa']:.3f} (for comparison)")
+    # emergence note
+    print("[calib] emergence: judge definition = the first step with judge==1; cos definition = the first step with cos>t.")
+    print("         after backfilling the judge_* columns per step within (model,task,story_id,repetition) groups in labels.csv,")
+    print("         compare whether the two first-passage definitions agree (the judge columns must hold per-step values).")
     return 0
 
 
